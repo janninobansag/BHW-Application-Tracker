@@ -4,7 +4,13 @@ export const siteCopy = {
   brand: "BHW Records",
   tagline: "Barangay health desk",
   navigation: { records: "Child records", admin: "Administration", signOut: "Sign out" },
-  csvHeaders: ["Child Name", "Birthday", "Age (Months)", "Sex", "Parents", "Barangay", "Assigned BHW", "Age As Of"],
+  csvTitle: "VITAMIN A AND DEWORMING",
+  csvLocationSuffix: "MINGLANILLA, CEBU",
+  csvHeaders: [
+    "NO.", "NAME", "DATE OF BIRTH", "PUROK", "MONTHS", "GENDER M/F",
+    "VITAMIN A 1ST DOSE", "VITAMIN A 2ND DOSE", "DEWORMING 1ST DOSE",
+    "DEWORMING 2ND DOSE", "GUARDIAN",
+  ],
 } as const;
 
 export const messages = {
