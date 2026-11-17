@@ -1,26 +1,13 @@
 import "server-only";
-import { env } from "cloudflare:workers";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { deleteSession, deleteUserSessions, findSessionUser, insertSession } from "@/Data/commands";
+import type { AppUser } from "@/Data/entities";
+export type { AppUser } from "@/Data/entities";
 export { hashPassword, validPassword, verifyPassword } from "./password";
-
-export type AppUser = {
-  id: string;
-  username: string;
-  display_name: string;
-  role: "admin" | "bhw";
-  password_hash: string | null;
-  is_active: number;
-  must_change_password: number;
-};
 
 const cookieName = process.env.NODE_ENV === "production" ? "__Host-bhw-session" : "bhw-session";
 const sessionHours = 12;
-
-export function db(): D1Database {
-  if (!env.DB) throw new Error("D1 database is unavailable");
-  return env.DB;
-}
 
 export function cleanUsername(value: string): string {
   return value.trim().toLowerCase();
@@ -44,11 +31,7 @@ export async function getCurrentUser(): Promise<AppUser | null> {
   const token = (await cookies()).get(cookieName)?.value;
   if (!token || token.length > 200) return null;
   const digest = await tokenDigest(token);
-  const user = await db().prepare(`SELECT u.id, u.username, u.display_name, u.role, u.password_hash,
-    u.is_active, u.must_change_password FROM sessions s
-    JOIN users u ON u.id = s.user_id
-    WHERE s.token_hash = ? AND s.expires_at > ? AND u.is_active = 1`).bind(digest, new Date().toISOString()).first<AppUser>();
-  return user ?? null;
+  return await findSessionUser(digest, new Date().toISOString());
 }
 
 export async function requireUser(): Promise<AppUser> {
@@ -68,8 +51,7 @@ export async function createSession(userId: string): Promise<void> {
   const token = toBase64(crypto.getRandomValues(new Uint8Array(32))).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
   const digest = await tokenDigest(token);
   const expiresAt = new Date(Date.now() + sessionHours * 60 * 60 * 1000);
-  await db().prepare("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)")
-    .bind(digest, userId, expiresAt.toISOString()).run();
+  await insertSession(digest, userId, expiresAt.toISOString());
   (await cookies()).set(cookieName, token, {
     httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict",
     path: "/", expires: expiresAt,
@@ -77,12 +59,12 @@ export async function createSession(userId: string): Promise<void> {
 }
 
 export async function revokeSessions(userId: string): Promise<void> {
-  await db().prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId).run();
+  await deleteUserSessions(userId);
 }
 
 export async function clearCurrentSession(): Promise<void> {
   const jar = await cookies();
   const token = jar.get(cookieName)?.value;
-  if (token) await db().prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await tokenDigest(token)).run();
+  if (token) await deleteSession(await tokenDigest(token));
   jar.delete(cookieName);
 }

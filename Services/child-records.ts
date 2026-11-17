@@ -1,5 +1,17 @@
 export type Sex = "F" | "M";
 
+export type ChildDetails = {
+  name: string;
+  birthday: string;
+  sex: string;
+  parents: string;
+};
+
+export function validChildDetails(value: ChildDetails): boolean {
+  return !!value.name && value.name.length <= 120 && !!value.parents && value.parents.length <= 240 &&
+    isValidBirthday(value.birthday) && (value.sex === "F" || value.sex === "M");
+}
+
 export function todayInManila(now = new Date()): string {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit",

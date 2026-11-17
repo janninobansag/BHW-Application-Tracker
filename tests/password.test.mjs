@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hashPassword, verifyPassword, validPassword } from "../lib/password.ts";
+import { hashPassword, verifyPassword, validPassword } from "../Services/password.ts";
 
 test("Argon2id hashes verify without storing the password", async () => {
   const hash = await hashPassword("LocalTestPass!2026");

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ageInMonths, isValidBirthday } from "../lib/bhw";
+import { ageInMonths, isValidBirthday } from "@/Services/child-records";
 
 export function ChildAgeInput({ initial = "", today, inputId = "birthday-new" }: { initial?: string; today: string; inputId?: string }) {
   const [birthday, setBirthday] = useState(initial);

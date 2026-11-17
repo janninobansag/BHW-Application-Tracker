@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { AppUser } from "../lib/auth";
-import { logout } from "./actions";
+import type { AppUser } from "@/Data/entities";
+import { logout } from "@/Client/controllers/actions";
 
 export function AppShell({ user, title, eyebrow, children }: {
   user: AppUser; title: string; eyebrow: string; children: React.ReactNode;

@@ -1,12 +1,7 @@
 import "server-only";
-import { AppUser, db } from "./auth";
-
-export type Barangay = { id: string; name: string };
-export type Child = {
-  id: string; name: string; birthday: string; sex: "F" | "M"; parents: string;
-  barangay_id: string; barangay_name: string; bhw_names: string | null;
-};
-export type ManagedUser = AppUser & { assigned_ids: string | null };
+import { db } from "./context";
+import type { AppUser, Barangay, Child, ManagedUser } from "./entities";
+export type { Barangay, Child, ManagedUser } from "./entities";
 
 export async function isSetupComplete(): Promise<boolean> {
   const row = await db().prepare("SELECT value FROM settings WHERE key = 'setup_complete'").first<{ value: string }>();

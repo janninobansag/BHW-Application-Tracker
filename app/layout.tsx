@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { siteCopy } from "@/Resources/copy";
 
 export const metadata: Metadata = {
-  title: "BHW Child Records",
-  description: "Secure child records and barangay reporting for Barangay Health Workers.",
+  title: siteCopy.title,
+  description: siteCopy.description,
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
@@ -17,7 +18,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }
