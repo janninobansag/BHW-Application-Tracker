@@ -1,7 +1,8 @@
 import { requireAdmin } from "@/Services/auth";
 import { listBarangays, listManagedUsers, listPuroks } from "@/Data/repositories";
-import { addBarangay, addPurok, createBhw, editBarangay, editPurok, resetBhwPassword, saveAssignments, setBhwActive } from "@/Client/controllers/actions";
+import { createBhw, resetBhwPassword, saveAssignments, setBhwActive } from "@/Client/controllers/actions";
 import { AppShell } from "@/Client/views/components/shell";
+import { CoverageManager } from "@/Client/views/components/coverage-manager";
 
 export const dynamic = "force-dynamic";
 
@@ -32,15 +33,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
           <div className="field"><label htmlFor="temporaryPassword">Temporary password</label><input id="temporaryPassword" name="temporaryPassword" type="password" minLength={12} maxLength={128} autoComplete="new-password" required /></div>
           <button className="primary-button" type="submit">Create account</button>
         </form></section>
-        <section className="panel form-panel"><p className="eyebrow">Coverage</p><h2>Barangays and Puroks</h2>
-          <div className="barangay-list">{barangays.map((barangay) => <div className="coverage-item" key={barangay.id}>
-            <strong>{barangay.name}</strong>
-            <details><summary>Edit barangay</summary><form action={editBarangay} className="form-stack"><input type="hidden" name="barangayId" value={barangay.id} /><div className="field"><label htmlFor={`barangay-${barangay.id}`}>Barangay name</label><input id={`barangay-${barangay.id}`} name="name" defaultValue={barangay.name} maxLength={100} required /></div><button className="secondary-button" type="submit">Save barangay</button></form></details>
-            <form action={addPurok} className="form-stack"><input type="hidden" name="barangayId" value={barangay.id} /><div className="field"><label htmlFor={`new-purok-${barangay.id}`}>Add Purok</label><input id={`new-purok-${barangay.id}`} name="name" maxLength={100} required /></div><button className="secondary-button" type="submit">Add Purok</button></form>
-            {puroks.filter((purok) => purok.barangay_id === barangay.id).map((purok) => <details key={purok.id}><summary>Edit Purok: {purok.name}</summary><form action={editPurok} className="form-stack"><input type="hidden" name="purokId" value={purok.id} /><div className="field"><label htmlFor={`purok-${purok.id}`}>Purok name</label><input id={`purok-${purok.id}`} name="name" defaultValue={purok.name} maxLength={100} required /></div><button className="secondary-button" type="submit">Save Purok</button></form></details>)}
-          </div>)}</div>
-          <form action={addBarangay} className="form-stack"><div className="field"><label htmlFor="barangayName">New barangay name</label><input id="barangayName" name="name" maxLength={100} required /></div><button className="secondary-button" type="submit">Add barangay</button></form>
-        </section>
+        <CoverageManager barangays={barangays} puroks={puroks} />
       </div>
     </div>
   </AppShell>;
