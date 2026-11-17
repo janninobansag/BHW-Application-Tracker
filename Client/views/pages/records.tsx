@@ -26,7 +26,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
       <div className="stat"><span>Female</span><strong>{female}</strong><small>Recorded as F</small></div>
     </div>
     <div className="workspace-grid">
-      <section className="panel record-panel"><div className="section-heading"><div><p className="eyebrow">Registry</p><h2>Children in your care</h2></div><a className="secondary-button" href={`/api/export?${csvQuery}`}>Download CSV</a></div>
+      <section className="panel record-panel"><div className="section-heading"><div><p className="eyebrow">Registry</p><h2>Children in your care</h2></div><div className="button-row"><a className="primary-button" href={`/api/export/xlsx?${csvQuery}`}>Download formatted Excel</a><a className="secondary-button" href={`/api/export?${csvQuery}`}>Download CSV</a></div></div>
         <form method="get" className="filters" aria-label="Filter child records">
           <div className="field"><label htmlFor="q">Search</label><input id="q" name="q" placeholder="Child or parent name" defaultValue={q} /></div>
           <div className="field"><label htmlFor="barangay">Barangay</label><select id="barangay" name="barangay" defaultValue={barangay}><option value="">All assigned barangays</option>{barangays.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
