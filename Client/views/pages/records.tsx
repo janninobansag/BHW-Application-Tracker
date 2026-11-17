@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/Services/auth";
 import { ageInMonths, todayInManila } from "@/Services/child-records";
-import { listBarangays, listChildren } from "@/Data/repositories";
+import { listBarangays, listChildren, listPuroks } from "@/Data/repositories";
 import { saveChild } from "@/Client/controllers/actions";
 import { ChildAgeInput } from "@/Client/views/components/child-age-input";
 import { AppShell } from "@/Client/views/components/shell";
@@ -13,7 +13,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
   const params = await searchParams;
   const q = typeof params.q === "string" ? params.q.slice(0, 80) : "";
   const barangay = typeof params.barangay === "string" ? params.barangay : "";
-  const [barangays, children] = await Promise.all([listBarangays(user), listChildren(user, q, barangay)]);
+  const [barangays, puroks, children] = await Promise.all([listBarangays(user), listPuroks(user), listChildren(user, q, barangay)]);
   const today = todayInManila();
   const male = children.filter((child) => child.sex === "M").length;
   const female = children.filter((child) => child.sex === "F").length;
@@ -32,10 +32,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
           <div className="field"><label htmlFor="barangay">Barangay</label><select id="barangay" name="barangay" defaultValue={barangay}><option value="">All assigned barangays</option>{barangays.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
           <button className="filter-button" type="submit">Apply</button>
         </form>
-        {children.length ? <div className="table-scroll"><table><thead><tr><th>Child</th><th>Age</th><th>Sex</th><th>Parents</th><th>Barangay / BHW</th><th><span className="sr-only">Action</span></th></tr></thead><tbody>
-          {children.map((child) => <tr key={child.id}><td><strong>{child.name}</strong><small>{child.birthday}</small></td><td>{ageInMonths(child.birthday, today)} months</td><td><span className="sex-pill">{child.sex}</span></td><td>{child.parents}</td><td><strong>{child.barangay_name}</strong><small>{child.bhw_names || "Unassigned"}</small></td><td><Link className="table-link" href={`/records/${encodeURIComponent(child.id)}`}>Edit</Link></td></tr>)}
+        {children.length ? <div className="table-scroll"><table><thead><tr><th>Child</th><th>Age</th><th>Sex</th><th>Parents</th><th>Barangay / Purok / BHW</th><th><span className="sr-only">Action</span></th></tr></thead><tbody>
+          {children.map((child) => <tr key={child.id}><td><strong>{child.name}</strong><small>{child.birthday}</small></td><td>{ageInMonths(child.birthday, today)} months</td><td><span className="sex-pill">{child.sex}</span></td><td>{child.parents}</td><td><strong>{child.barangay_name}</strong><small>{child.purok_name || "Purok not specified"} · {child.bhw_names || "Unassigned"}</small></td><td><Link className="table-link" href={`/records/${encodeURIComponent(child.id)}`}>Edit</Link></td></tr>)}
         </tbody></table></div> : <div className="empty-state"><strong>No children found</strong><p>{q || barangay ? "Try another search or barangay filter." : "Add the first child record using the form."}</p></div>}
-        <p className="table-note">Ages use full months as of {today}. Counts and CSV match the current filters.</p>
+        <p className="table-note">Ages use full months as of {today}. Counts and Excel export match the current filters.</p>
       </section>
       <section className="panel form-panel"><p className="eyebrow">New record</p><h2>Add a child</h2><p className="muted">Keep names and birthdays accurate for monthly reporting.</p>
         {barangays.length ? <form action={saveChild} className="form-stack">
@@ -44,6 +44,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
           <div className="field"><label htmlFor="sex">Sex</label><select id="sex" name="sex" required defaultValue=""><option value="" disabled>Select F or M</option><option value="F">F — Female</option><option value="M">M — Male</option></select></div>
           <div className="field"><label htmlFor="parents">Parents&apos; names</label><input id="parents" name="parents" maxLength={240} required /></div>
           <div className="field"><label htmlFor="barangayId">Barangay</label><select id="barangayId" name="barangayId" required defaultValue=""><option value="" disabled>Select a barangay</option>{barangays.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
+          <div className="field"><label htmlFor="purokId">Purok</label><select id="purokId" name="purokId" required defaultValue=""><option value="" disabled>Select a Purok</option>{puroks.map((item) => <option key={item.id} value={item.id}>{barangays.find((b) => b.id === item.barangay_id)?.name} — {item.name}</option>)}</select></div>
           <button className="primary-button" type="submit">Save child record</button>
         </form> : <p className="notice">No barangay is assigned to your account. Ask the administrator to assign one.</p>}
       </section>

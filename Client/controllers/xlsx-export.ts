@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
     ? `BARANGAY ${selectedBarangays[0].toUpperCase()}, ${siteCopy.csvLocationSuffix}`
     : `BARANGAYS ${selectedBarangays.map((name) => name.toUpperCase()).join(", ")}, ${siteCopy.csvLocationSuffix}`;
   const records = children.map((child, index) => [
-    `${index + 1}.`, child.name, child.birthday, child.barangay_name,
+    `${index + 1}.`, child.name, child.birthday, child.purok_name ?? "",
     ageInMonths(child.birthday, today), child.sex, "", "", "", "", child.parents,
   ] as Array<string | number>);
   const workbook = makeWorkbook(barangayTitle, records);

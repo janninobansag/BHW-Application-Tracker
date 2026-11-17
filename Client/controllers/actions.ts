@@ -5,14 +5,15 @@ import { getChatGPTUser } from "@/Client/auth/chatgpt";
 import { assertSameOrigin, cleanUsername, clearCurrentSession, createSession,
   getCurrentUser, hashPassword, requireAdmin, requireUser, revokeSessions,
   validPassword, verifyPassword } from "@/Services/auth";
-import { canAccessBarangay, isSetupComplete } from "@/Data/repositories";
+import { canAccessBarangay, canAccessPurok, isSetupComplete, listPuroks } from "@/Data/repositories";
 import { validChildDetails } from "@/Services/child-records";
 import { validBarangayName, validBhwAccount } from "@/Services/staff";
 import { messages } from "@/Resources/copy";
-import { barangayExists, barangayNameExists, clearLoginAttempts, findBhw, findChildBarangay,
+import { barangayExists, barangayNameExists, barangayNameExistsElsewhere, clearLoginAttempts, findBhw, findChildBarangay,
   findLoginAttempt, findLoginUser, initializeAdmin, insertBarangay, insertBhw, insertChild,
-  recordLoginFailure, replaceAssignments, resetBhwPassword as writeBhwPassword,
-  setBhwActive as writeBhwActive, updateChild, updateOwnPassword, usernameExists } from "@/Data/commands";
+  insertPurok, purokNameExists, purokNameExistsElsewhere, recordLoginFailure, replaceAssignments, resetBhwPassword as writeBhwPassword,
+  setBhwActive as writeBhwActive, updateBarangay, updateChild, updateOwnPassword, updatePurok,
+  usernameExists } from "@/Data/commands";
 
 const value = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
 const go = (path: string, message: string): never => redirect(`${path}?message=${encodeURIComponent(message)}`);
@@ -82,17 +83,19 @@ export async function saveChild(form: FormData) {
   const sex = value(form, "sex");
   const parents = value(form, "parents");
   const barangayId = value(form, "barangayId");
-  if (!validChildDetails({ name, birthday, sex, parents }) || !(await canAccessBarangay(user, barangayId))) {
+  const purokId = value(form, "purokId");
+  if (!validChildDetails({ name, birthday, sex, parents }) || !(await canAccessBarangay(user, barangayId)) ||
+      !(await canAccessPurok(user, purokId, barangayId))) {
     go("/", messages.childInvalid);
   }
   const now = new Date().toISOString();
   if (id) {
     const existingBarangay = await findChildBarangay(id);
     if (!existingBarangay || !(await canAccessBarangay(user, existingBarangay))) go("/", messages.childMissing);
-    await updateChild({ id, name, birthday, sex, parents, barangayId, userId: user.id, now });
+    await updateChild({ id, name, birthday, sex, parents, barangayId, purokId, userId: user.id, now });
     go("/", messages.childUpdated);
   }
-  await insertChild({ id: crypto.randomUUID(), name, birthday, sex, parents, barangayId, userId: user.id, now });
+  await insertChild({ id: crypto.randomUUID(), name, birthday, sex, parents, barangayId, purokId, userId: user.id, now });
   go("/", messages.childAdded);
 }
 
@@ -104,6 +107,39 @@ export async function addBarangay(form: FormData) {
   if (await barangayNameExists(name)) go("/admin", messages.barangayExists);
   await insertBarangay(crypto.randomUUID(), name, new Date().toISOString());
   go("/admin", messages.barangayAdded);
+}
+
+export async function editBarangay(form: FormData) {
+  await assertSameOrigin();
+  await requireAdmin();
+  const id = value(form, "barangayId");
+  const name = value(form, "name");
+  if (!validBarangayName(name)) go("/admin", messages.barangayInvalid);
+  if (await barangayNameExistsElsewhere(id, name)) go("/admin", messages.barangayExists);
+  await updateBarangay(id, name);
+  go("/admin", messages.barangayUpdated);
+}
+
+export async function addPurok(form: FormData) {
+  await assertSameOrigin();
+  const admin = await requireAdmin();
+  const barangayId = value(form, "barangayId");
+  const name = value(form, "name");
+  if (!(await canAccessBarangay(admin, barangayId)) || !validBarangayName(name)) go("/admin", messages.purokInvalid);
+  if (await purokNameExists(barangayId, name)) go("/admin", messages.purokExists);
+  await insertPurok(crypto.randomUUID(), barangayId, name, new Date().toISOString());
+  go("/admin", messages.purokAdded);
+}
+
+export async function editPurok(form: FormData) {
+  await assertSameOrigin();
+  await requireAdmin();
+  const id = value(form, "purokId");
+  const name = value(form, "name");
+  if (!validBarangayName(name)) go("/admin", messages.purokInvalid);
+  if (await purokNameExistsElsewhere(id, name)) go("/admin", messages.purokExists);
+  await updatePurok(id, name);
+  go("/admin", messages.purokUpdated);
 }
 
 export async function createBhw(form: FormData) {
@@ -123,14 +159,18 @@ export async function createBhw(form: FormData) {
 
 export async function saveAssignments(form: FormData) {
   await assertSameOrigin();
-  await requireAdmin();
+  const admin = await requireAdmin();
   const userId = value(form, "userId");
   const user = await findBhw(userId);
   if (!user) return go("/admin", messages.bhwMissing);
   const barangayIds = [...new Set(form.getAll("barangayId").map(String))];
+  const purokIds = [...new Set(form.getAll("purokId").map(String))];
   const checks = await Promise.all(barangayIds.map(barangayExists));
   if (checks.some((exists) => !exists)) go("/admin", messages.assignmentInvalid);
-  await replaceAssignments(userId, barangayIds);
+  const puroks = await listPuroks(admin);
+  const validPuroks = new Set(puroks.filter((purok) => barangayIds.includes(purok.barangay_id)).map((purok) => purok.id));
+  if (purokIds.some((purokId) => !validPuroks.has(purokId))) go("/admin", messages.assignmentInvalid);
+  await replaceAssignments(userId, barangayIds, purokIds);
   go("/admin", messages.assignmentSaved);
 }
 

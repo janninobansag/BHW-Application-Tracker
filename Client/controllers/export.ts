@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     `${index + 1}.`,
     child.name,
     child.birthday,
-    child.barangay_name,
+    child.purok_name ?? "",
     ageInMonths(child.birthday, today),
     child.sex,
     "", // Vitamin A doses are not currently tracked by the app.

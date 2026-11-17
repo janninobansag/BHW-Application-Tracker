@@ -23,10 +23,22 @@ export const barangays = sqliteTable("barangays", {
   createdAt: text("created_at").notNull(),
 });
 
+export const puroks = sqliteTable("puroks", {
+  id: text("id").primaryKey(),
+  barangayId: text("barangay_id").notNull().references(() => barangays.id),
+  name: text("name").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
 export const assignments = sqliteTable("assignments", {
   userId: text("user_id").notNull().references(() => users.id),
   barangayId: text("barangay_id").notNull().references(() => barangays.id),
 }, (table) => [primaryKey({ columns: [table.userId, table.barangayId] })]);
+
+export const purokAssignments = sqliteTable("purok_assignments", {
+  userId: text("user_id").notNull().references(() => users.id),
+  purokId: text("purok_id").notNull().references(() => puroks.id),
+}, (table) => [primaryKey({ columns: [table.userId, table.purokId] })]);
 
 export const children = sqliteTable("children", {
   id: text("id").primaryKey(),
@@ -35,6 +47,7 @@ export const children = sqliteTable("children", {
   sex: text("sex", { enum: ["F", "M"] }).notNull(),
   parents: text("parents").notNull(),
   barangayId: text("barangay_id").notNull().references(() => barangays.id),
+  purokId: text("purok_id").references(() => puroks.id),
   createdBy: text("created_by").notNull().references(() => users.id),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),

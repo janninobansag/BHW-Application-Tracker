@@ -1,5 +1,5 @@
 import "server-only";
-import { db } from "./context";
+import { db, ensurePurokSchema } from "./context";
 import type { AppUser } from "./entities";
 
 export type LoginAttempt = { failures: number; locked_until: string | null };
@@ -52,26 +52,57 @@ export async function findChildBarangay(id: string): Promise<string | null> {
 
 export type ChildWrite = {
   id: string; name: string; birthday: string; sex: string; parents: string;
-  barangayId: string; userId: string; now: string;
+  barangayId: string; purokId: string; userId: string; now: string;
 };
 
 export async function updateChild(input: ChildWrite): Promise<void> {
-  await db().prepare("UPDATE children SET name = ?, birthday = ?, sex = ?, parents = ?, barangay_id = ?, updated_at = ? WHERE id = ?")
-    .bind(input.name, input.birthday, input.sex, input.parents, input.barangayId, input.now, input.id).run();
+  await ensurePurokSchema();
+  await db().prepare("UPDATE children SET name = ?, birthday = ?, sex = ?, parents = ?, barangay_id = ?, purok_id = ?, updated_at = ? WHERE id = ?")
+    .bind(input.name, input.birthday, input.sex, input.parents, input.barangayId, input.purokId, input.now, input.id).run();
 }
 
 export async function insertChild(input: ChildWrite): Promise<void> {
-  await db().prepare(`INSERT INTO children (id, name, birthday, sex, parents, barangay_id, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .bind(input.id, input.name, input.birthday, input.sex, input.parents, input.barangayId, input.userId, input.now, input.now).run();
+  await ensurePurokSchema();
+  await db().prepare(`INSERT INTO children (id, name, birthday, sex, parents, barangay_id, purok_id, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(input.id, input.name, input.birthday, input.sex, input.parents, input.barangayId, input.purokId, input.userId, input.now, input.now).run();
 }
 
 export async function barangayNameExists(name: string): Promise<boolean> {
   return !!(await db().prepare("SELECT 1 FROM barangays WHERE lower(name) = lower(?)").bind(name).first());
 }
 
+export async function barangayNameExistsElsewhere(id: string, name: string): Promise<boolean> {
+  return !!(await db().prepare("SELECT 1 FROM barangays WHERE lower(name) = lower(?) AND id <> ?").bind(name, id).first());
+}
+
 export async function insertBarangay(id: string, name: string, now: string): Promise<void> {
   await db().prepare("INSERT INTO barangays (id, name, created_at) VALUES (?, ?, ?)").bind(id, name, now).run();
+}
+
+export async function updateBarangay(id: string, name: string): Promise<void> {
+  await db().prepare("UPDATE barangays SET name = ? WHERE id = ?").bind(name, id).run();
+}
+
+export async function purokNameExists(barangayId: string, name: string): Promise<boolean> {
+  return !!(await db().prepare("SELECT 1 FROM puroks WHERE barangay_id = ? AND lower(name) = lower(?)").bind(barangayId, name).first());
+}
+
+export async function purokNameExistsElsewhere(id: string, name: string): Promise<boolean> {
+  const row = await db().prepare("SELECT barangay_id FROM puroks WHERE id = ?").bind(id).first<{ barangay_id: string }>();
+  if (!row) return true;
+  return !!(await db().prepare("SELECT 1 FROM puroks WHERE barangay_id = ? AND lower(name) = lower(?) AND id <> ?")
+    .bind(row.barangay_id, name, id).first());
+}
+
+export async function insertPurok(id: string, barangayId: string, name: string, now: string): Promise<void> {
+  await ensurePurokSchema();
+  await db().prepare("INSERT INTO puroks (id, barangay_id, name, created_at) VALUES (?, ?, ?, ?)").bind(id, barangayId, name, now).run();
+}
+
+export async function updatePurok(id: string, name: string): Promise<void> {
+  await ensurePurokSchema();
+  await db().prepare("UPDATE puroks SET name = ? WHERE id = ?").bind(name, id).run();
 }
 
 export async function usernameExists(username: string): Promise<boolean> {
@@ -92,10 +123,13 @@ export async function barangayExists(id: string): Promise<boolean> {
   return !!(await db().prepare("SELECT id FROM barangays WHERE id = ?").bind(id).first());
 }
 
-export async function replaceAssignments(userId: string, barangayIds: string[]): Promise<void> {
+export async function replaceAssignments(userId: string, barangayIds: string[], purokIds: string[]): Promise<void> {
+  await ensurePurokSchema();
   await db().batch([
     db().prepare("DELETE FROM assignments WHERE user_id = ?").bind(userId),
+    db().prepare("DELETE FROM purok_assignments WHERE user_id = ?").bind(userId),
     ...barangayIds.map((id) => db().prepare("INSERT INTO assignments (user_id, barangay_id) VALUES (?, ?)").bind(userId, id)),
+    ...purokIds.map((id) => db().prepare("INSERT INTO purok_assignments (user_id, purok_id) VALUES (?, ?)").bind(userId, id)),
   ]);
 }
 
