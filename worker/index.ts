@@ -1,6 +1,6 @@
 import handler from "vinext/server/fetch-handler";
-import { runWithConnectorBinding } from "../lib/connector-context";
-import type { ConnectorBinding } from "../lib/connector-contract.mjs";
+import { runWithConnectorBinding } from "../Client/shared/lib/connector-context";
+import type { ConnectorBinding } from "../Client/shared/lib/connector-contract.mjs";
 
 const worker = {
   fetch(request: Request, env: Cloudflare.Env, ctx: ExecutionContext<{ CONNECTORS?: ConnectorBinding }>) {
