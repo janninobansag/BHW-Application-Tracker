@@ -9,9 +9,13 @@ export const metadata: Metadata = {
   applicationName: "BHW Records",
   manifest: "/manifest.webmanifest",
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
-    apple: "/icons/apple-touch-icon.png",
+    icon: [
+      { url: "/favicon-bhw.png", sizes: "64x64", type: "image/png" },
+      { url: "/icons/bhw-records-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/bhw-records-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    shortcut: "/favicon-bhw.png",
+    apple: "/icons/bhw-records-apple-touch-icon.png",
   },
   appleWebApp: {
     capable: true,

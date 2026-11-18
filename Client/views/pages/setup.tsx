@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { isSetupComplete } from "@/Data/repositories";
 import { setupAdmin } from "@/Client/controllers/actions";
+import { BrandIcon } from "@/Client/views/components/brand-icon";
 import { FeedbackDialog } from "@/Client/views/components/feedback-dialog";
 import { PasswordInput } from "@/Client/views/components/password-input";
 
@@ -11,7 +12,7 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
   const { message, feedbackError, feedbackId } = await searchParams;
   return <main className="auth-page setup-page"><div className="auth-panel">
     <FeedbackDialog message={message} isError={feedbackError === "1"} feedbackId={feedbackId} />
-    <div className="auth-brand"><span className="brand-mark">✚</span><span><strong>BHW Records</strong><small>Barangay health desk</small></span></div>
+    <div className="auth-brand"><BrandIcon className="brand-mark" /><span><strong>BHW Records</strong><small>Barangay health desk</small></span></div>
     <p className="eyebrow">One-time secure setup</p><h1>Set the Admin password</h1>
     <p className="muted">Enter the one-time setup token configured for the backend, then choose the Admin password.</p>
     <form action={setupAdmin} className="form-stack">
@@ -21,5 +22,5 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
       <button className="primary-button" type="submit">Activate Admin account</button>
     </form>
     <p className="auth-footnote">Keep the site owner-only until this step is complete.</p>
-  </div><div className="auth-side"><div><span className="auth-side-icon">✚</span><h2>Your health desk starts here.</h2><p>After setup, sign in as Admin to manage workers and their assigned barangays.</p></div></div></main>;
+  </div><div className="auth-side"><div><BrandIcon className="auth-side-icon" /><h2>Your health desk starts here.</h2><p>After setup, sign in as Admin to manage workers and their assigned barangays.</p></div></div></main>;
 }

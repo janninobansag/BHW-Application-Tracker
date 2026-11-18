@@ -1,13 +1,13 @@
-const CACHE_NAME = "bhw-pwa-shell-v2";
+const CACHE_NAME = "bhw-pwa-shell-v4";
 const APP_SHELL = [
   "/offline.html",
   "/offline.js",
   "/manifest.webmanifest",
-  "/favicon.svg",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
-  "/icons/icon-maskable-512.png",
-  "/icons/apple-touch-icon.png",
+  "/favicon-bhw.png",
+  "/icons/bhw-records-192.png",
+  "/icons/bhw-records-512.png",
+  "/icons/bhw-records-maskable-512.png",
+  "/icons/bhw-records-apple-touch-icon.png",
 ];
 
 self.addEventListener("install", (event) => {
