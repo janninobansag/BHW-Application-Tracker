@@ -29,3 +29,9 @@ export async function getDb(): Promise<Db> {
   ]);
   return database;
 }
+
+export async function closeDb(): Promise<void> {
+  if (client) await client.close();
+  client = undefined;
+  database = undefined;
+}
