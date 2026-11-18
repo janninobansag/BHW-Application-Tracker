@@ -1,39 +1,64 @@
 "use client";
 
 import { Download, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 };
 
+let installedByEvent = false;
+
+function getInstalledSnapshot() {
+  if (typeof window === "undefined") return false;
+
+  return (
+    installedByEvent ||
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+  );
+}
+
+function subscribeToInstalled(onChange: () => void) {
+  const displayMode = window.matchMedia("(display-mode: standalone)");
+  const handleInstalled = () => {
+    installedByEvent = true;
+    onChange();
+  };
+
+  displayMode.addEventListener("change", onChange);
+  window.addEventListener("appinstalled", handleInstalled);
+  return () => {
+    displayMode.removeEventListener("change", onChange);
+    window.removeEventListener("appinstalled", handleInstalled);
+  };
+}
+
+function getServerInstalledSnapshot() {
+  return false;
+}
+
 export function PwaInstallButton() {
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
-  const [isInstalled, setIsInstalled] = useState(false);
+  const isInstalled = useSyncExternalStore(
+    subscribeToInstalled,
+    getInstalledSnapshot,
+    getServerInstalledSnapshot,
+  );
+  const [acceptedInstall, setAcceptedInstall] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
-    const standalone =
-      window.matchMedia("(display-mode: standalone)").matches ||
-      (navigator as Navigator & { standalone?: boolean }).standalone === true;
-    setIsInstalled(standalone);
-
     const handleInstallPrompt = (event: Event) => {
       event.preventDefault();
       setInstallPrompt(event as InstallPromptEvent);
     };
-    const handleInstalled = () => {
-      setIsInstalled(true);
-      setInstallPrompt(null);
-    };
 
     window.addEventListener("beforeinstallprompt", handleInstallPrompt);
-    window.addEventListener("appinstalled", handleInstalled);
     return () => {
       window.removeEventListener("beforeinstallprompt", handleInstallPrompt);
-      window.removeEventListener("appinstalled", handleInstalled);
     };
   }, []);
 
@@ -45,7 +70,7 @@ export function PwaInstallButton() {
     if (!showHelp && dialog.open) dialog.close();
   }, [showHelp]);
 
-  if (isInstalled) return null;
+  if (isInstalled || acceptedInstall) return null;
 
   const handleClick = async () => {
     if (!installPrompt) {
@@ -58,7 +83,7 @@ export function PwaInstallButton() {
     try {
       await prompt.prompt();
       const choice = await prompt.userChoice;
-      if (choice.outcome === "accepted") setIsInstalled(true);
+      if (choice.outcome === "accepted") setAcceptedInstall(true);
     } catch {
       setShowHelp(true);
     }
