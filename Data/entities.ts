@@ -3,7 +3,7 @@ export type AppUser = {
   username: string;
   display_name: string;
   role: "admin" | "bhw";
-  password_hash: string | null;
+  password_hash?: string | null;
   is_active: number;
   must_change_password: number;
 };

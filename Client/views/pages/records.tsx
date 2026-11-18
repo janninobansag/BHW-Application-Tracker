@@ -5,10 +5,11 @@ import { listBarangays, listChildren, listPuroks } from "@/Data/repositories";
 import { saveChild } from "@/Client/controllers/actions";
 import { ChildAgeInput } from "@/Client/views/components/child-age-input";
 import { AppShell } from "@/Client/views/components/shell";
+import { FeedbackDialog } from "@/Client/views/components/feedback-dialog";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ q?: string; barangay?: string; message?: string }> }) {
+export default async function Home({ searchParams }: { searchParams: Promise<{ q?: string; barangay?: string; message?: string; feedbackError?: string; feedbackId?: string }> }) {
   const user = await requireUser();
   const params = await searchParams;
   const q = typeof params.q === "string" ? params.q.slice(0, 80) : "";
@@ -19,14 +20,14 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
   const female = children.filter((child) => child.sex === "F").length;
   const csvQuery = new URLSearchParams({ q, barangay }).toString();
   return <AppShell user={user} title="Child records" eyebrow="Community health registry">
-    {params.message && <p className="notice" role="status">{params.message}</p>}
+    <FeedbackDialog message={params.message} isError={params.feedbackError === "1"} feedbackId={params.feedbackId} />
     <div className="stats-grid" aria-label="Record totals">
       <div className="stat"><span>Total children</span><strong>{children.length}</strong><small>In the current view</small></div>
       <div className="stat"><span>Male</span><strong>{male}</strong><small>Recorded as M</small></div>
       <div className="stat"><span>Female</span><strong>{female}</strong><small>Recorded as F</small></div>
     </div>
     <div className="workspace-grid">
-      <section className="panel record-panel"><div className="section-heading"><div><p className="eyebrow">Registry</p><h2>Children in your care</h2></div><a className="primary-button" href={`/api/export/xlsx?${csvQuery}`}>Download formatted Excel</a></div>
+      <section className="panel record-panel"><div className="section-heading"><div><p className="eyebrow">Registry</p><h2>Children in your care</h2></div><a className="primary-button" href={`/api/backend/export/xlsx?${csvQuery}`}>Download formatted Excel</a></div>
         <form method="get" className="filters" aria-label="Filter child records">
           <div className="field"><label htmlFor="q">Search</label><input id="q" name="q" placeholder="Child or parent name" defaultValue={q} /></div>
           <div className="field"><label htmlFor="barangay">Barangay</label><select id="barangay" name="barangay" defaultValue={barangay}><option value="">All assigned barangays</option>{barangays.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>

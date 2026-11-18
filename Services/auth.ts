@@ -1,17 +1,13 @@
 import "server-only";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { deleteSession, deleteUserSessions, findSessionUser, insertSession } from "@/Data/commands";
+import { backendRequest } from "@/Data/api-client";
 import type { AppUser } from "@/Data/entities";
 export type { AppUser } from "@/Data/entities";
-export { hashPassword, validPassword, verifyPassword } from "./password";
 
 const cookieName = process.env.NODE_ENV === "production" ? "__Host-bhw-session" : "bhw-session";
-const sessionHours = 12;
 
-export function cleanUsername(value: string): string {
-  return value.trim().toLowerCase();
-}
+export function cleanUsername(value: string): string { return value.trim().toLowerCase(); }
 
 export async function assertSameOrigin(): Promise<void> {
   const requestHeaders = await headers();
@@ -20,18 +16,15 @@ export async function assertSameOrigin(): Promise<void> {
   if (!origin || !host || new URL(origin).host !== host) throw new Error("Invalid request origin");
 }
 
-const toBase64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
-
-async function tokenDigest(token: string): Promise<string> {
-  const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token)));
-  return Array.from(hash, (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
 export async function getCurrentUser(): Promise<AppUser | null> {
-  const token = (await cookies()).get(cookieName)?.value;
-  if (!token || token.length > 200) return null;
-  const digest = await tokenDigest(token);
-  return await findSessionUser(digest, new Date().toISOString());
+  try {
+    const response = await backendRequest("/auth/me");
+    if (!response.ok) return null;
+    const payload = await response.json() as { user: AppUser };
+    return payload.user;
+  } catch {
+    return null;
+  }
 }
 
 export async function requireUser(): Promise<AppUser> {
@@ -47,24 +40,16 @@ export async function requireAdmin(): Promise<AppUser> {
   return user;
 }
 
-export async function createSession(userId: string): Promise<void> {
-  const token = toBase64(crypto.getRandomValues(new Uint8Array(32))).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
-  const digest = await tokenDigest(token);
-  const expiresAt = new Date(Date.now() + sessionHours * 60 * 60 * 1000);
-  await insertSession(digest, userId, expiresAt.toISOString());
-  (await cookies()).set(cookieName, token, {
-    httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict",
-    path: "/", expires: expiresAt,
-  });
+export async function isSetupComplete(): Promise<boolean> {
+  try {
+    const response = await backendRequest("/auth/setup-status");
+    if (!response.ok) return false;
+    return (await response.json() as { complete: boolean }).complete;
+  } catch {
+    return false;
+  }
 }
 
-export async function revokeSessions(userId: string): Promise<void> {
-  await deleteUserSessions(userId);
-}
-
-export async function clearCurrentSession(): Promise<void> {
-  const jar = await cookies();
-  const token = jar.get(cookieName)?.value;
-  if (token) await deleteSession(await tokenDigest(token));
-  jar.delete(cookieName);
+export async function clearLocalSession(): Promise<void> {
+  (await cookies()).set(cookieName, "", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/", maxAge: 0 });
 }
