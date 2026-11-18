@@ -3,16 +3,18 @@ services:
     name: bhw-api
     runtime: node
     rootDir: backend
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /health
     envVars:
+      - key: NODE_ENV
+        value: production
       - key: NODE_VERSION
         value: 22.13.0
       - key: MONGODB_URI
         sync: false
       - key: MONGODB_DATABASE
-        value: bhw
+        value: bhw_local
       - key: SESSION_SECRET
         generateValue: true
       - key: FRONTEND_ORIGIN

@@ -7,6 +7,7 @@ import { makeWorkbook } from "./workbook.js";
 type User = { id: string; username: string; display_name: string; role: "admin" | "bhw"; password_hash?: string | null; is_active: number; must_change_password: number; created_at?: string; updated_at?: string };
 type UserPublic = Omit<User, "password_hash">;
 type Barangay = { id: string; name: string; created_at?: string };
+type Sitio = { id: string; name: string; barangay_id: string; created_at?: string };
 type Purok = { id: string; name: string; barangay_id: string; created_at?: string };
 type Child = { id: string; name: string; birthday: string; sex: "F" | "M"; parents: string; barangay_id: string; purok_id: string; created_by: string; created_at: string; updated_at: string };
 const now = () => new Date().toISOString();
@@ -29,7 +30,7 @@ function validBirthday(value: unknown): value is string {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const [year, month, day] = value.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
-  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day && value <= new Date().toISOString().slice(0, 10);
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day && value <= todayInManila();
 }
 
 function todayInManila(): string {
@@ -191,13 +192,43 @@ router.get("/api/puroks", async (req, res, next) => {
   } catch (error) { return next(error); }
 });
 
+router.get("/api/sitios", async (req, res, next) => {
+  try {
+    const user = res.locals.user as User;
+    const db = await getDb();
+    const requestedBarangay = req.query.barangay ? String(req.query.barangay) : "";
+    const query: Record<string, unknown> = {};
+    if (user.role === "admin") {
+      if (requestedBarangay) query.barangay_id = requestedBarangay;
+    } else {
+      const ids = await assignedPurokIds(user);
+      const assignedPuroks = await db.collection<Purok>("puroks").find({ id: { $in: ids } }).toArray();
+      const barangayIds = [...new Set(assignedPuroks.map((purok) => purok.barangay_id))];
+      query.barangay_id = requestedBarangay
+        ? (barangayIds.includes(requestedBarangay) ? requestedBarangay : { $in: [] })
+        : { $in: barangayIds };
+    }
+    return res.json({ sitios: await db.collection<Sitio>("sitios").find(query).sort({ name: 1 }).toArray() });
+  } catch (error) { return next(error); }
+});
+
 router.get("/api/children", async (req, res, next) => {
   try {
     const user = res.locals.user as User;
     const db = await getDb();
     const query: Record<string, unknown> = {};
+    const requestedBarangay = req.query.barangay ? String(req.query.barangay) : "";
+    const requestedPurok = req.query.purok ? String(req.query.purok) : "";
     if (user.role !== "admin") query.purok_id = { $in: await assignedPurokIds(user) };
-    if (req.query.barangay) query.barangay_id = String(req.query.barangay);
+    if (requestedBarangay) query.barangay_id = requestedBarangay;
+    if (requestedPurok) {
+      const purok = await db.collection<Purok>("puroks").findOne({ id: requestedPurok });
+      if (!purok) return message(res, 400, "Choose a valid Purok.");
+      if (requestedBarangay && requestedBarangay !== purok.barangay_id) return message(res, 400, "The selected Purok does not belong to that barangay.");
+      if (!(await canAccessPurok(user, requestedPurok, purok.barangay_id))) return message(res, 403, "This Purok is not assigned to your account.");
+      query.barangay_id = purok.barangay_id;
+      query.purok_id = purok.id;
+    }
     const q = String(req.query.q ?? "").trim().slice(0, 80);
     if (q) query.$or = [{ name: { $regex: escapeRegExp(q), $options: "i" } }, { parents: { $regex: escapeRegExp(q), $options: "i" } }];
     const docs = await db.collection<Child>("children").find(query).sort({ name: 1, birthday: 1 }).toArray();
@@ -240,21 +271,53 @@ router.get("/api/admin/users", requireAdmin, async (_req, res, next) => {
 router.post("/api/children", async (req, res, next) => {
   try {
     const user = res.locals.user as User;
-    const { id, name, birthday, sex, parents, barangayId, purokId } = req.body;
+    const { id, name, birthday, sex, parents, barangayId, purokId, expectedUpdatedAt, updatedAt } = req.body;
+    const hasOfflineVersion = Object.prototype.hasOwnProperty.call(req.body, "expectedUpdatedAt");
+    const expectedVersion = hasOfflineVersion ? expectedUpdatedAt : updatedAt;
+    const hasExpectedVersion = hasOfflineVersion || (typeof updatedAt === "string" && updatedAt.length > 0);
     if (!validName(name, 120) || !validName(parents, 240) || !validBirthday(birthday) || !["F", "M"].includes(sex) || !(await canAccessBarangay(user, barangayId)) || !(await canAccessPurok(user, purokId, barangayId))) return message(res, 400, "Check the child details and assigned barangay/Purok.");
     const db = await getDb();
     const stamp = now();
     const child: Child = { id: id || randomUUID(), name: name.trim(), birthday, sex, parents: parents.trim(), barangay_id: barangayId, purok_id: purokId, created_by: user.id, created_at: stamp, updated_at: stamp };
     if (id) {
       const existing = await db.collection<Child>("children").findOne({ id });
-      if (!existing || !(await canAccessPurok(user, existing.purok_id, existing.barangay_id))) return message(res, 404, "Record unavailable.");
+      if (!existing) {
+        if (!hasOfflineVersion) return message(res, 404, "Record unavailable.");
+        if (expectedUpdatedAt !== null) return message(res, 409, "This record no longer exists online. Review your offline copy before syncing.");
+        await db.collection<Child>("children").insertOne(child);
+        return res.json({ message: "Child record added.", child });
+      }
+      if (!(await canAccessPurok(user, existing.purok_id, existing.barangay_id))) return message(res, 404, "Record unavailable.");
+      if (hasOfflineVersion && expectedUpdatedAt === null) {
+        const sameOfflineCreate = existing.created_by === user.id && existing.name === child.name && existing.birthday === child.birthday && existing.sex === child.sex && existing.parents === child.parents && existing.barangay_id === child.barangay_id && existing.purok_id === child.purok_id;
+        return sameOfflineCreate ? res.json({ message: "Child record was already synced.", child: existing }) : message(res, 409, "A record with this offline ID already exists with different details.");
+      }
+      if (hasExpectedVersion && (typeof expectedVersion !== "string" || existing.updated_at !== expectedVersion)) return message(res, 409, hasOfflineVersion ? "This record changed online after your offline copy was saved." : "This record changed after you opened it. Reload the record before saving again.");
       child.created_by = existing.created_by;
       child.created_at = existing.created_at;
-      await db.collection<Child>("children").replaceOne({ id }, child);
-      return res.json({ message: "Child record updated." });
+      const filter = hasExpectedVersion ? { id, updated_at: existing.updated_at } : { id };
+      const saved = await db.collection<Child>("children").replaceOne(filter, child);
+      if (!saved.matchedCount) return message(res, 409, hasOfflineVersion ? "This record changed online after your offline copy was saved." : "This record changed after you opened it. Reload the record before saving again.");
+      return res.json({ message: "Child record updated.", child });
     }
     await db.collection<Child>("children").insertOne(child);
-    return res.json({ message: "Child record added." });
+    return res.json({ message: "Child record added.", child });
+  } catch (error) { return next(error); }
+});
+
+router.delete("/api/children/:id", async (req, res, next) => {
+  try {
+    const user = res.locals.user as User;
+    const id = String(req.params.id);
+    const updatedAt = typeof req.body.updatedAt === "string" ? req.body.updatedAt : "";
+    const db = await getDb();
+    const child = await db.collection<Child>("children").findOne({ id });
+    if (!child || !(await canAccessPurok(user, child.purok_id, child.barangay_id))) return message(res, 404, "Record unavailable.");
+    if (updatedAt && child.updated_at !== updatedAt) return message(res, 409, "This record changed after you opened it. Reload and review it before deleting.");
+    const filter = updatedAt ? { id, updated_at: updatedAt } : { id };
+    const result = await db.collection<Child>("children").deleteOne(filter);
+    if (!result.deletedCount) return message(res, 409, "This record changed before it could be deleted. Reload and try again.");
+    return res.json({ message: "Child record deleted." });
   } catch (error) { return next(error); }
 });
 
@@ -288,14 +351,16 @@ router.delete("/api/admin/barangays/:id", requireAdmin, async (req, res, next) =
     const db = await getDb();
     const barangay = await db.collection<Barangay>("barangays").findOne({ id: barangayId });
     if (!barangay) return message(res, 404, "Barangay unavailable.");
-    const [puroks, children, assignedWorkers] = await Promise.all([
+    const [puroks, sitios, children, assignedWorkers] = await Promise.all([
       db.collection<Purok>("puroks").countDocuments({ barangay_id: barangayId }),
+      db.collection<Sitio>("sitios").countDocuments({ barangay_id: barangayId }),
       db.collection<Child>("children").countDocuments({ barangay_id: barangayId }),
       db.collection("assignments").countDocuments({ barangay_id: barangayId }),
     ]);
     if (puroks || children || assignedWorkers) {
       const reasons = [
         puroks && `${puroks} Purok${puroks === 1 ? "" : "s"}`,
+        sitios && `${sitios} Sitio${sitios === 1 ? "" : "s"}`,
         children && `${children} child record${children === 1 ? "" : "s"}`,
         assignedWorkers && `${assignedWorkers} BHW assignment${assignedWorkers === 1 ? "" : "s"}`,
       ].filter(Boolean);
@@ -315,6 +380,43 @@ router.post("/api/admin/puroks", requireAdmin, async (req, res, next) => {
     if (await db.collection<Purok>("puroks").findOne({ barangay_id: barangayId, name: { $regex: `^${escapeRegExp(name)}$`, $options: "i" } })) return message(res, 409, "That Purok already exists in this barangay.");
     await db.collection<Purok>("puroks").insertOne({ id: randomUUID(), name, barangay_id: barangayId, created_at: now() });
     return res.json({ message: "Purok added." });
+  } catch (error) { return next(error); }
+});
+
+router.post("/api/admin/sitios", requireAdmin, async (req, res, next) => {
+  try {
+    const barangayId = String(req.body.barangayId ?? "");
+    const name = String(req.body.name ?? "").trim();
+    if (!validName(name) || !(await canAccessBarangay(res.locals.user as User, barangayId))) return message(res, 400, "Enter a Sitio name and select its barangay.");
+    const db = await getDb();
+    if (await db.collection<Sitio>("sitios").findOne({ barangay_id: barangayId, name: { $regex: `^${escapeRegExp(name)}$`, $options: "i" } })) return message(res, 409, "That Sitio already exists in this barangay.");
+    await db.collection<Sitio>("sitios").insertOne({ id: randomUUID(), name, barangay_id: barangayId, created_at: now() });
+    return res.json({ message: "Sitio added." });
+  } catch (error) { return next(error); }
+});
+
+router.put("/api/admin/sitios/:id", requireAdmin, async (req, res, next) => {
+  try {
+    const sitioId = String(req.params.id);
+    const name = String(req.body.name ?? "").trim();
+    if (!validName(name)) return message(res, 400, "Enter a Sitio name under 100 characters.");
+    const db = await getDb();
+    const current = await db.collection<Sitio>("sitios").findOne({ id: sitioId });
+    if (!current) return message(res, 404, "Sitio unavailable.");
+    const duplicate = await db.collection<Sitio>("sitios").findOne({ id: { $ne: sitioId }, barangay_id: current.barangay_id, name: { $regex: `^${escapeRegExp(name)}$`, $options: "i" } });
+    if (duplicate) return message(res, 409, "That Sitio already exists in this barangay.");
+    await db.collection<Sitio>("sitios").updateOne({ id: sitioId }, { $set: { name } });
+    return res.json({ message: "Sitio updated." });
+  } catch (error) { return next(error); }
+});
+
+router.delete("/api/admin/sitios/:id", requireAdmin, async (req, res, next) => {
+  try {
+    const db = await getDb();
+    const sitio = await db.collection<Sitio>("sitios").findOne({ id: req.params.id });
+    if (!sitio) return message(res, 404, "Sitio unavailable.");
+    await db.collection<Sitio>("sitios").deleteOne({ id: sitio.id });
+    return res.json({ message: `Sitio ${sitio.name} deleted.` });
   } catch (error) { return next(error); }
 });
 
@@ -420,31 +522,45 @@ router.get("/api/export/xlsx", async (req, res, next) => {
     if (user.must_change_password) return message(res, 403, "Change your password before exporting.");
     const db = await getDb();
     const requestedBarangay = req.query.barangay ? String(req.query.barangay) : "";
-    if (requestedBarangay && !(await canAccessBarangay(user, requestedBarangay))) return message(res, 403, "This barangay is not assigned to your account.");
+    const requestedPurok = req.query.purok ? String(req.query.purok) : "";
+    const requestedSitio = req.query.sitio ? String(req.query.sitio) : "";
+    if (!requestedBarangay || !requestedPurok || !requestedSitio) return message(res, 400, "Choose a barangay, Sitio, and Purok before exporting.");
+    if (!(await canAccessBarangay(user, requestedBarangay))) return message(res, 403, "This barangay is not assigned to your account.");
+    if (!(await canAccessPurok(user, requestedPurok, requestedBarangay))) return message(res, 403, "This Purok is not assigned under the selected barangay.");
+    const sitio = await db.collection<Sitio>("sitios").findOne({ id: requestedSitio, barangay_id: requestedBarangay });
+    if (!sitio) return message(res, 400, "Choose a valid Sitio under the selected barangay.");
     const query: Record<string, unknown> = {};
-    if (user.role !== "admin") query.purok_id = { $in: await assignedPurokIds(user) };
-    if (req.query.barangay) query.barangay_id = String(req.query.barangay);
+    query.barangay_id = requestedBarangay;
+    query.purok_id = requestedPurok;
     const q = String(req.query.q ?? "").trim().slice(0, 80);
     if (q) query.$or = [{ name: { $regex: escapeRegExp(q), $options: "i" } }, { parents: { $regex: escapeRegExp(q), $options: "i" } }];
     const children = await db.collection<Child>("children").find(query).sort({ name: 1, birthday: 1 }).toArray();
-    const assignedPuroks = user.role === "admin" ? [] : await db.collection<Purok>("puroks").find({ id: { $in: await assignedPurokIds(user) } }).toArray();
-    const assignedBarangayIds = [...new Set(assignedPuroks.map((purok) => purok.barangay_id))];
-    const barangays = await db.collection<Barangay>("barangays").find(user.role === "admin" ? (requestedBarangay ? { id: requestedBarangay } : {}) : { id: requestedBarangay ? requestedBarangay : { $in: assignedBarangayIds } }).sort({ name: 1 }).toArray();
-    const puroks = await db.collection<Purok>("puroks").find({ id: { $in: [...new Set(children.map((c) => c.purok_id))] } }).toArray();
-    const barangayName = new Map(barangays.map((item) => [item.id, item.name]));
+    const [barangay, puroks, assignedWorkers] = await Promise.all([
+      db.collection<Barangay>("barangays").findOne({ id: requestedBarangay }),
+      db.collection<Purok>("puroks").find({ id: { $in: [...new Set(children.map((c) => c.purok_id))] } }).toArray(),
+      db.collection("purok_assignments").find({ purok_id: requestedPurok }).toArray(),
+    ]);
     const purokName = new Map(puroks.map((item) => [item.id, item.name]));
-    const selected = barangays.map((item) => item.name.toUpperCase());
-    const title = `${selected.length === 1 ? "BARANGAY" : "BARANGAYS"} ${selected.join(", ")}, MINGLANILLA, CEBU`;
-    const rows = children.map((child, index) => [`${index + 1}.`, child.name, child.birthday, purokName.get(child.purok_id) ?? "", ageInMonths(child.birthday, todayInManila()), child.sex, "", "", "", "", child.parents]);
-    const file = makeWorkbook(title, rows);
+    const purok = await db.collection<Purok>("puroks").findOne({ id: requestedPurok, barangay_id: requestedBarangay });
+    const workers = await db.collection<User>("users").find({ id: { $in: assignedWorkers.map((item) => String(item.user_id)) }, role: "bhw", is_active: 1 }).toArray();
+    const bhwName = workers.map((worker) => worker.display_name).join(", ") || (user.role === "bhw" ? user.display_name : "Unassigned");
+    const rows = children.map((child, index) => [`${index + 1}.`, child.name, excelDateSerial(child.birthday), purokName.get(child.purok_id) ?? "", ageInMonths(child.birthday, todayInManila()), child.sex, "", "", "", "", child.parents]);
+    const file = Buffer.from(makeWorkbook({ barangay: barangay?.name ?? "", sitio: sitio.name, purok: purok?.name ?? "", bhw: bhwName }, rows));
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="vitamin-a-deworming-${todayInManila()}.xlsx"`);
+    res.setHeader("Content-Length", String(file.length));
+    res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "private, no-store");
-    return res.send(Buffer.from(file));
+    return res.end(file);
   } catch (error) { return next(error); }
 });
 
 function escapeRegExp(value: string): string { return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+function excelDateSerial(value: string): number {
+  const [year, month, day] = value.split("-").map(Number);
+  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000) + 25_569;
+}
 
 export const app = express();
 app.disable("x-powered-by");

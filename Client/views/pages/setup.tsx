@@ -16,7 +16,7 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
     <p className="muted">Enter the one-time setup token configured for the backend, then choose the Admin password.</p>
     <form action={setupAdmin} className="form-stack">
       <div className="field"><label htmlFor="setupToken">One-time setup token</label><PasswordInput id="setupToken" name="setupToken" autoComplete="off" required /></div>
-      <div className="field"><label htmlFor="password">Admin password</label><PasswordInput id="password" name="password" minLength={12} maxLength={128} autoComplete="new-password" required /><small className="field-hint">Use 12–128 characters.</small></div>
+      <div className="field"><label htmlFor="password">Admin password</label><PasswordInput id="password" name="password" minLength={12} maxLength={128} autoComplete="new-password" required /><small className="field-hint">Use 12-128 characters.</small></div>
       <div className="field"><label htmlFor="confirm">Confirm password</label><PasswordInput id="confirm" name="confirm" minLength={12} maxLength={128} autoComplete="new-password" required /></div>
       <button className="primary-button" type="submit">Activate Admin account</button>
     </form>

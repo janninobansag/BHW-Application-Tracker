@@ -15,6 +15,8 @@ export async function getDb(): Promise<Db> {
     database.collection("users").createIndex({ username: 1 }, { unique: true }),
     database.collection("barangays").createIndex({ id: 1 }, { unique: true }),
     database.collection("barangays").createIndex({ name: 1 }, { unique: true }),
+    database.collection("sitios").createIndex({ id: 1 }, { unique: true }),
+    database.collection("sitios").createIndex({ barangay_id: 1, name: 1 }, { unique: true }),
     database.collection("puroks").createIndex({ id: 1 }, { unique: true }),
     database.collection("puroks").createIndex({ barangay_id: 1, name: 1 }, { unique: true }),
     database.collection("children").createIndex({ id: 1 }, { unique: true }),
