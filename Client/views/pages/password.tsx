@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { getCurrentUser } from "@/Services/auth";
 import { changeOwnPassword } from "@/Client/controllers/actions";
 import { FeedbackDialog } from "@/Client/views/components/feedback-dialog";
@@ -18,6 +19,6 @@ export default async function PasswordPage({ searchParams }: { searchParams: Pro
       <div className="field"><label htmlFor="next">New password</label><PasswordInput id="next" name="next" autoComplete="new-password" minLength={12} maxLength={128} required /></div>
       <div className="field"><label htmlFor="confirm">Confirm new password</label><PasswordInput id="confirm" name="confirm" autoComplete="new-password" minLength={12} maxLength={128} required /></div>
       <button className="primary-button" type="submit">Update password</button>
-    </form><a className="back-link" href="/">Back to records</a>
+    </form><Link className="back-link" href="/">Back to records</Link>
   </div></main>;
 }

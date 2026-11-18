@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ageInMonths, isValidBirthday, makeCsv, todayInManila } from "../Services/child-records.ts";
+import { ageInMonths, isValidBirthday, makeCsv, todayInManila } from "../child-records.ts";
 
 test("completed months use the Philippine calendar date", () => {
   assert.equal(ageInMonths("2022-02-02", "2026-11-17"), 57);
