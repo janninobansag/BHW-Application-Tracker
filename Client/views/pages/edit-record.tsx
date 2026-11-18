@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { requireUser } from "@/Services/auth";
 import { todayInManila } from "@/Services/child-records";
 import { listBarangays, listChildren, listPuroks } from "@/Data/repositories";
@@ -23,7 +24,7 @@ export default async function EditRecord({ params }: { params: Promise<{ id: str
       <div className="field"><label htmlFor="parents">Parents&apos; names</label><input id="parents" name="parents" defaultValue={child.parents} maxLength={240} required /></div>
       <div className="field"><label htmlFor="barangayId">Barangay</label><select id="barangayId" name="barangayId" defaultValue={child.barangay_id} required>{barangays.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
       <div className="field"><label htmlFor="purokId">Purok</label><select id="purokId" name="purokId" defaultValue={child.purok_id ?? ""} required>{puroks.map((item) => <option key={item.id} value={item.id}>{barangays.find((b) => b.id === item.barangay_id)?.name} — {item.name}</option>)}</select></div>
-      <div className="button-row"><button className="primary-button" type="submit">Save changes</button><a className="secondary-button" href="/">Cancel</a></div>
+      <div className="button-row"><button className="primary-button" type="submit">Save changes</button><Link className="secondary-button" href="/">Cancel</Link></div>
     </form>
   </section></div></AppShell>;
 }
