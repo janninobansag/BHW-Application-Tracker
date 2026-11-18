@@ -31,6 +31,12 @@ npm run dev
 
 For the exact deployment variables and D1 migration procedure, see [backend/README.md](backend/README.md).
 
+## Offline use
+
+While online, a BHW can open **Child records**, choose **Enable offline access**, and save an encrypted copy of their assigned child records using a separate offline passphrase. Open **Offline records** from the top navigation and unlock that copy with the BHW username and offline passphrase. If the connection drops on a records page, the app automatically opens the offline workspace unless a child form has unsaved entries; in that case it keeps the form open to prevent losing those entries. BHWs can view, add, and edit cached records; queued changes sync automatically after connectivity returns. If a record was changed online by someone else, the offline workspace asks which version to keep.
+
+Offline copies are stored only in that browser on that device. Keep the passphrase safe: it is not stored or recoverable, and unsynced edits cannot be recovered if it is forgotten. **Admin tools and formatted Excel export still require internet.**
+
 ## Deployment
 
 The Vercel project root is the repository root. Set `RENDER_API_URL` to the Render API HTTPS origin in Vercel. Create the API service from `render.yaml` and set its Atlas connection string, frontend origin, and one-time Admin setup token. Import the D1 snapshot into an empty Atlas database before opening the new frontend to users.

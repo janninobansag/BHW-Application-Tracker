@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#166f62" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon-bhw.png" />
+    <title>Offline records | BHW Records</title>
+    <style>
+      :root { color-scheme: light; font-family: "Segoe UI", Arial, sans-serif; color: #18322f; background: #f4f7f5; }
+      * { box-sizing: border-box; }
+      body { min-height: 100vh; margin: 0; }
+      header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem max(1rem, calc((100vw - 76rem) / 2)); border-bottom: 1px solid #d8e5df; background: #fff; }
+      .brand { display: flex; align-items: center; gap: .75rem; font-weight: 700; }
+      .mark { display: grid; width: 2.6rem; height: 2.6rem; place-items: center; overflow: hidden; border: 1px solid #d8e5df; border-radius: .7rem; background: #fff; object-fit: contain; }
+      .status { display: inline-flex; align-items: center; gap: .45rem; padding: .4rem .65rem; border: 1px solid #d8e5df; border-radius: 99px; color: #315650; font-size: .88rem; }
+      .status::before { width: .5rem; height: .5rem; border-radius: 50%; background: #d88a1d; content: ""; }
+      .status.online::before { background: #14836f; }
+      main { width: min(100% - 2rem, 76rem); margin: 2rem auto; }
+      .card { padding: clamp(1rem, 3vw, 1.5rem); border: 1px solid #d8e5df; border-radius: .8rem; background: #fff; box-shadow: 0 8px 24px rgb(22 52 45 / 4%); }
+      h1, h2, h3, p { margin-top: 0; }
+      h1 { margin-bottom: .5rem; font-size: clamp(1.5rem, 3vw, 2rem); }
+      h2 { margin-bottom: .4rem; font-size: 1.25rem; }
+      p { color: #526964; line-height: 1.55; }
+      .eyebrow { margin-bottom: .4rem; color: #147867; font-size: .76rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+      .muted { color: #62756f; font-size: .9rem; }
+      .stack { display: grid; gap: 1rem; }
+      .field { display: grid; gap: .4rem; }
+      label { font-size: .92rem; font-weight: 650; }
+      input, select { width: 100%; min-height: 2.8rem; padding: .65rem .75rem; border: 1px solid #cbdcd3; border-radius: .45rem; background: #fff; color: #18322f; font: inherit; }
+      input:focus, select:focus, button:focus-visible, a:focus-visible { outline: 3px solid #5bc1a7; outline-offset: 2px; }
+      button, .button { display: inline-flex; align-items: center; justify-content: center; min-height: 2.65rem; padding: .6rem .9rem; border: 1px solid #c6e4d8; border-radius: .45rem; background: #eef8f4; color: #086f60; font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }
+      button.primary { border-color: #166f62; background: #166f62; color: #fff; }
+      button:disabled { opacity: .55; cursor: not-allowed; }
+      .actions { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+      .unlock { width: min(100%, 32rem); margin: 3rem auto; }
+      .workspace-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+      .workspace-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(19rem, .9fr); gap: 1rem; align-items: start; }
+      .record-list { display: grid; gap: .65rem; margin-top: 1rem; }
+      .record { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; padding: .85rem; border: 1px solid #e0e9e4; border-radius: .5rem; }
+      .record strong, .record small { display: block; }
+      .record small { margin-top: .25rem; color: #5d716b; line-height: 1.4; }
+      .record .record-state { color: #94620f; font-size: .78rem; font-weight: 700; }
+      .record button { min-height: 2.2rem; padding: .35rem .65rem; font-size: .86rem; }
+      .notice { margin: 1rem 0 0; padding: .75rem .9rem; border: 1px solid #d8e5df; border-radius: .45rem; background: #f7faf8; }
+      .notice.error { border-color: #ecc7c3; background: #fff7f6; color: #9e382f; }
+      .notice.success { border-color: #bfe5d5; background: #f0faf5; color: #146d53; }
+      .conflict { margin-top: 1rem; padding: 1rem; border: 1px solid #eacb8d; border-radius: .55rem; background: #fffaf0; }
+      .conflict h3 { margin-bottom: .4rem; font-size: 1rem; }
+      .counts { display: flex; flex-wrap: wrap; gap: .6rem; margin: .5rem 0 1rem; }
+      .count { padding: .4rem .6rem; border-radius: .4rem; background: #f0f7f4; color: #315650; font-size: .88rem; }
+      [hidden] { display: none !important; }
+      @media (max-width: 760px) { .workspace-grid { grid-template-columns: 1fr; } main { margin-top: 1rem; } header { padding: .8rem 1rem; } }
+    </style>
+    <script src="/offline.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <div class="brand"><img class="mark" src="/icons/bhw-records-192.png" alt="" width="192" height="192" /><span>BHW Records<br /><small class="muted">Offline workspace</small></span></div>
+      <span id="connection-status" class="status">Checking connection</span>
+    </header>
+    <main>
+      <section id="unlock-panel" class="card unlock">
+        <p class="eyebrow">Private device copy</p>
+        <h1>Unlock offline records</h1>
+        <p>Use the BHW username and offline passphrase used when saving the encrypted copy on this device.</p>
+        <form id="unlock-form" class="stack">
+          <div class="field"><label for="offline-username">BHW username</label><input id="offline-username" name="username" autocomplete="username" required /></div>
+          <div class="field"><label for="offline-passphrase">Offline passphrase</label><input id="offline-passphrase" name="passphrase" type="password" autocomplete="current-password" required /></div>
+          <button class="primary" type="submit">Unlock records</button>
+        </form>
+        <p id="unlock-message" class="notice" role="status" hidden></p>
+        <p class="muted" style="margin:.9rem 0 0">No copy found? Connect to the internet, sign in, and save an offline copy from Child records.</p>
+        <a class="button" style="margin-top:.7rem" href="/login">Sign in online</a>
+      </section>
+
+      <section id="workspace" hidden>
+        <div class="workspace-header">
+          <div><p class="eyebrow">Assigned registry</p><h1 id="welcome"></h1><p id="snapshot-date" class="muted"></p></div>
+          <div class="actions"><button id="sync-button" class="primary" type="button">Sync changes</button><a class="button" href="/">Online records</a><button id="lock-button" type="button">Lock</button></div>
+        </div>
+        <p id="workspace-message" class="notice" role="status" hidden></p>
+        <div id="conflicts" hidden></div>
+        <div class="counts"><span class="count" id="count-total"></span><span class="count" id="count-male"></span><span class="count" id="count-female"></span><span class="count" id="count-pending"></span></div>
+        <div class="workspace-grid">
+          <section class="card">
+            <div class="workspace-header"><div><p class="eyebrow">Saved on this device</p><h2>Child records</h2></div><button id="new-record-button" type="button">Add child</button></div>
+            <div class="field"><label for="record-search">Search names</label><input id="record-search" type="search" placeholder="Child or parent name" /></div>
+            <div id="record-list" class="record-list"></div>
+            <p id="empty-records" class="muted" hidden>No matching records on this device.</p>
+          </section>
+          <section id="record-editor" class="card" hidden>
+            <p class="eyebrow">Offline change</p><h2 id="editor-title">Add a child</h2>
+            <form id="child-form" class="stack">
+              <input id="record-id" type="hidden" />
+              <div class="field"><label for="child-name">Child's name</label><input id="child-name" maxlength="120" required /></div>
+              <div class="field"><label for="child-birthday">Date of birth</label><input id="child-birthday" type="date" required /><small id="birthday-hint" class="muted">Age appears after you choose a birthday.</small></div>
+              <div class="field"><label for="child-sex">Sex</label><select id="child-sex" required><option value="">Select</option><option value="F">F - Female</option><option value="M">M - Male</option></select></div>
+              <div class="field"><label for="child-parents">Parents' names</label><input id="child-parents" maxlength="240" required /></div>
+              <div class="field"><label for="child-barangay">Barangay</label><select id="child-barangay" required><option value="">Select a barangay</option></select></div>
+              <div class="field"><label for="child-purok">Purok</label><select id="child-purok" required><option value="">Select a Purok</option></select></div>
+              <div class="actions"><button id="save-record-button" class="primary" type="submit">Save offline</button><button id="cancel-edit-button" type="button">Cancel</button></div>
+            </form>
+          </section>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

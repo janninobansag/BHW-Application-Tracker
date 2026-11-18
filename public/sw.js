@@ -1,0 +1,57 @@
+const CACHE_NAME = "bhw-pwa-shell-v4";
+const APP_SHELL = [
+  "/offline.html",
+  "/offline.js",
+  "/manifest.webmanifest",
+  "/favicon-bhw.png",
+  "/icons/bhw-records-192.png",
+  "/icons/bhw-records-512.png",
+  "/icons/bhw-records-maskable-512.png",
+  "/icons/bhw-records-apple-touch-icon.png",
+];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches
+      .open(CACHE_NAME)
+      .then((cache) => cache.addAll(APP_SHELL))
+      .then(() => self.skipWaiting()),
+  );
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((key) => key.startsWith("bhw-pwa-") && key !== CACHE_NAME)
+            .map((key) => caches.delete(key)),
+        ),
+      )
+      .then(() => self.clients.claim()),
+  );
+});
+
+self.addEventListener("fetch", (event) => {
+  const request = event.request;
+  if (request.method !== "GET") return;
+
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+
+  // Never cache authenticated pages or API responses containing child records.
+  if (url.pathname.startsWith("/api/")) return;
+
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request).catch(async () => (await caches.match("/offline.html")) || Response.error()),
+    );
+    return;
+  }
+
+  if (APP_SHELL.includes(url.pathname)) {
+    event.respondWith(caches.match(request).then((cached) => cached || fetch(request)));
+  }
+});

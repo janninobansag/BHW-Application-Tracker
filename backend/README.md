@@ -6,6 +6,10 @@ This is the Node/Express API deployed to Render. It uses MongoDB Atlas and serve
 
 Use Node.js 22.13 or newer. Set `MONGODB_URI`, then run `npm install`, `npm run dev` from this directory. The API listens on port `10000` by default. Configure `RENDER_API_URL=http://localhost:10000` in the frontend project while developing.
 
+## Backend tests
+
+The CI suite includes API integration and Excel workbook tests. The API test requires a running test MongoDB server; it creates a uniquely named database and drops it when finished. For a local MongoDB server, set `MONGODB_URI=mongodb://127.0.0.1:27017` and run `npm test` from this directory. Do not point the test at a database containing real BHW records.
+
 ## Render environment
 
 `render.yaml` configures the service with this directory as its root. Set these Render variables:
