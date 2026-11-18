@@ -7,7 +7,7 @@ import { backendRequest } from "@/Data/api-client";
 import { assertSameOrigin, clearLocalSession } from "@/Services/auth";
 
 const value = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
-const go = (path: string, message: string, error = false): never => redirect(`${path}?message=${encodeURIComponent(message)}&feedbackError=${error ? "1" : "0"}&feedbackId=${randomUUID()}`);
+const go = (path: string, message: string, error = false): never => redirect(`${path}${path.includes("?") ? "&" : "?"}message=${encodeURIComponent(message)}&feedbackError=${error ? "1" : "0"}&feedbackId=${randomUUID()}`);
 const formObject = (form: FormData) => Object.fromEntries([...form.keys()].map((key) => [key, form.getAll(key).length > 1 ? form.getAll(key).map(String) : String(form.get(key) ?? "")]));
 
 async function submit(path: string, form: FormData, target: string, method = "POST", body: unknown = formObject(form)) {
@@ -65,6 +65,14 @@ export async function saveChild(form: FormData) {
   go("/", message);
 }
 
+export async function deleteChildRecord(form: FormData) {
+  const id = value(form, "childId");
+  const requestedReturnTo = value(form, "returnTo");
+  const returnTo = requestedReturnTo.startsWith("/") && !requestedReturnTo.startsWith("//") && !requestedReturnTo.includes("\\") ? requestedReturnTo : "/";
+  const message = await submit(`/children/${encodeURIComponent(id)}`, form, returnTo, "DELETE", { updatedAt: value(form, "updatedAt") });
+  go(returnTo, message);
+}
+
 export async function addBarangay(form: FormData) {
   go("/admin", await submit("/admin/barangays", form, "/admin"));
 }
@@ -81,6 +89,20 @@ export async function deleteBarangay(form: FormData) {
 
 export async function addPurok(form: FormData) {
   go("/admin", await submit("/admin/puroks", form, "/admin"));
+}
+
+export async function addSitio(form: FormData) {
+  go("/admin", await submit("/admin/sitios", form, "/admin"));
+}
+
+export async function editSitio(form: FormData) {
+  const id = value(form, "sitioId");
+  go("/admin", await submit(`/admin/sitios/${encodeURIComponent(id)}`, form, "/admin", "PUT", { name: value(form, "name") }));
+}
+
+export async function deleteSitio(form: FormData) {
+  const id = value(form, "sitioId");
+  go("/admin", await submit(`/admin/sitios/${encodeURIComponent(id)}`, form, "/admin", "DELETE", {}));
 }
 
 export async function editPurok(form: FormData) {

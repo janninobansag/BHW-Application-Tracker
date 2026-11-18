@@ -1,7 +1,7 @@
 import "server-only";
 import { backendJson } from "./api-client";
-import type { AppUser, Barangay, Child, ManagedUser, Purok } from "./entities";
-export type { Barangay, Child, ManagedUser, Purok } from "./entities";
+import type { AppUser, Barangay, Child, ManagedUser, Purok, Sitio } from "./entities";
+export type { Barangay, Child, ManagedUser, Purok, Sitio } from "./entities";
 
 export async function isSetupComplete(): Promise<boolean> {
   return (await backendJson<{ complete: boolean }>("/auth/setup-status")).complete;
@@ -16,10 +16,16 @@ export async function listPuroks(_user?: AppUser, barangayId = ""): Promise<Puro
   return (await backendJson<{ puroks: Purok[] }>(`/puroks${query}`)).puroks;
 }
 
-export async function listChildren(_user: AppUser, q = "", barangayId = ""): Promise<Child[]> {
+export async function listSitios(_user?: AppUser, barangayId = ""): Promise<Sitio[]> {
+  const query = barangayId ? `?barangay=${encodeURIComponent(barangayId)}` : "";
+  return (await backendJson<{ sitios: Sitio[] }>(`/sitios${query}`)).sitios;
+}
+
+export async function listChildren(_user: AppUser, q = "", barangayId = "", purokId = ""): Promise<Child[]> {
   const params = new URLSearchParams();
   if (q) params.set("q", q);
   if (barangayId) params.set("barangay", barangayId);
+  if (purokId) params.set("purok", purokId);
   const query = params.size ? `?${params}` : "";
   return (await backendJson<{ children: Child[] }>(`/children${query}`)).children;
 }

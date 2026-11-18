@@ -1,5 +1,5 @@
 import { requireAdmin } from "@/Services/auth";
-import { listBarangays, listManagedUsers, listPuroks } from "@/Data/repositories";
+import { listBarangays, listManagedUsers, listPuroks, listSitios } from "@/Data/repositories";
 import { createBhw } from "@/Client/controllers/actions";
 import { AppShell } from "@/Client/views/components/shell";
 import { CoverageManager } from "@/Client/views/components/coverage-manager";
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminPage({ searchParams }: { searchParams: Promise<{ message?: string; feedbackError?: string; feedbackId?: string; assignmentUserId?: string; assignmentMessage?: string; assignmentError?: string }> }) {
   const admin = await requireAdmin();
-  const [barangays, puroks, users] = await Promise.all([listBarangays(admin), listPuroks(admin), listManagedUsers()]);
+  const [barangays, puroks, sitios, users] = await Promise.all([listBarangays(admin), listPuroks(admin), listSitios(admin), listManagedUsers()]);
   const { message, feedbackError, feedbackId, assignmentMessage, assignmentError } = await searchParams;
   const safeUsers = users.map(({ id, username, display_name, is_active, assigned_ids, assigned_purok_ids }) => ({ id, username, display_name, is_active, assigned_ids, assigned_purok_ids }));
   return <AppShell user={admin} title="Administration" eyebrow="Team and coverage">
@@ -26,7 +26,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
           <div className="field"><label htmlFor="temporaryPassword">Temporary password</label><PasswordInput id="temporaryPassword" name="temporaryPassword" minLength={12} maxLength={128} autoComplete="new-password" required /></div>
           <button className="primary-button" type="submit">Create account</button>
         </form></section>
-        <CoverageManager barangays={barangays} puroks={puroks} />
+        <CoverageManager barangays={barangays} puroks={puroks} sitios={sitios} />
       </div>
     </div>
   </AppShell>;

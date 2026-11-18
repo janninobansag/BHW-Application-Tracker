@@ -10,6 +10,7 @@ export type AppUser = {
 
 export type Barangay = { id: string; name: string };
 export type Purok = { id: string; name: string; barangay_id: string };
+export type Sitio = { id: string; name: string; barangay_id: string };
 
 export type Child = {
   id: string;
@@ -22,6 +23,7 @@ export type Child = {
   purok_id: string | null;
   purok_name: string | null;
   bhw_names: string | null;
+  updated_at?: string;
 };
 
 export type ManagedUser = AppUser & { assigned_ids: string | null; assigned_purok_ids: string | null };
