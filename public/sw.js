@@ -1,7 +1,11 @@
-const CACHE_NAME = "bhw-pwa-shell-v4";
+const CACHE_NAME = "bhw-pwa-shell-v10";
 const APP_SHELL = [
   "/offline.html",
   "/offline.js",
+  "/worker-offline-store.js",
+  "/records-ui.css",
+  "/offline-ui.css",
+  "/online-required.html",
   "/manifest.webmanifest",
   "/favicon-bhw.png",
   "/icons/bhw-records-192.png",
@@ -45,8 +49,10 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith("/api/")) return;
 
   if (request.mode === "navigate") {
+    const workerPage = url.pathname === "/" || url.pathname.startsWith("/records/") || url.pathname === "/offline.html";
+    const fallback = async () => (await caches.match(workerPage ? "/offline.html" : "/online-required.html")) || Response.error();
     event.respondWith(
-      fetch(request).catch(async () => (await caches.match("/offline.html")) || Response.error()),
+      fetch(request).then((response) => response.status >= 500 ? fallback() : response).catch(fallback),
     );
     return;
   }

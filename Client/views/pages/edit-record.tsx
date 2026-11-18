@@ -7,6 +7,7 @@ import { saveChild } from "@/Client/controllers/actions";
 import { ChildAgeInput } from "@/Client/views/components/child-age-input";
 import { ChildLocationFields } from "@/Client/views/components/child-location-fields";
 import { AppShell } from "@/Client/views/components/shell";
+import { AutomaticWorkerRecords } from "@/Client/views/components/automatic-worker-records";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ export default async function EditRecord({ params }: { params: Promise<{ id: str
   const child = records.find((row) => row.id === id);
   if (!child) notFound();
   return <AppShell user={user} title="Edit child record" eyebrow="Registry correction"><div className="edit-container"><section className="panel form-panel">
+    {user.role === "bhw" && <AutomaticWorkerRecords snapshot={{ user: { id: user.id, username: user.username, display_name: user.display_name }, children: records, barangays, puroks, savedAt: new Date().toISOString() }} />}
     <p className="muted">Correct the child&apos;s details below. Changes appear in the totals and CSV immediately.</p>
     <form action={saveChild} className="form-stack" data-offline-draft-form><input type="hidden" name="id" value={child.id} /><input type="hidden" name="updatedAt" value={child.updated_at ?? ""} />
       <div className="field"><label htmlFor="name">Child&apos;s name</label><input id="name" name="name" defaultValue={child.name} maxLength={120} required /></div>
