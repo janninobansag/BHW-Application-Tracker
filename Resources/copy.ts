@@ -1,5 +1,5 @@
 export const siteCopy = {
-  title: "BHW Child Records",
+  title: "BHW Records",
   description: "Secure child records and barangay reporting for Barangay Health Workers.",
   brand: "BHW Records",
   tagline: "Barangay health desk",

@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#166f62" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon-bhw.png" />
     <title>Offline records | BHW Records</title>
     <style>
       :root { color-scheme: light; font-family: "Segoe UI", Arial, sans-serif; color: #18322f; background: #f4f7f5; }
@@ -11,7 +12,7 @@
       body { min-height: 100vh; margin: 0; }
       header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem max(1rem, calc((100vw - 76rem) / 2)); border-bottom: 1px solid #d8e5df; background: #fff; }
       .brand { display: flex; align-items: center; gap: .75rem; font-weight: 700; }
-      .mark { display: grid; width: 2.6rem; height: 2.6rem; place-items: center; border-radius: .7rem; color: #fff; background: #166f62; font-size: 1.2rem; }
+      .mark { display: grid; width: 2.6rem; height: 2.6rem; place-items: center; overflow: hidden; border: 1px solid #d8e5df; border-radius: .7rem; background: #fff; object-fit: contain; }
       .status { display: inline-flex; align-items: center; gap: .45rem; padding: .4rem .65rem; border: 1px solid #d8e5df; border-radius: 99px; color: #315650; font-size: .88rem; }
       .status::before { width: .5rem; height: .5rem; border-radius: 50%; background: #d88a1d; content: ""; }
       .status.online::before { background: #14836f; }
@@ -55,7 +56,7 @@
   </head>
   <body>
     <header>
-      <div class="brand"><span class="mark" aria-hidden="true">+</span><span>BHW Records<br /><small class="muted">Offline workspace</small></span></div>
+      <div class="brand"><img class="mark" src="/icons/bhw-records-192.png" alt="" width="192" height="192" /><span>BHW Records<br /><small class="muted">Offline workspace</small></span></div>
       <span id="connection-status" class="status">Checking connection</span>
     </header>
     <main>
