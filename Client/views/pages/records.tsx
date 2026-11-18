@@ -7,7 +7,7 @@ import { ChildLocationFields } from "@/Client/views/components/child-location-fi
 import { ChildRegistry } from "@/Client/views/components/child-registry";
 import { AppShell } from "@/Client/views/components/shell";
 import { FeedbackDialog } from "@/Client/views/components/feedback-dialog";
-import { OfflineAccessPanel } from "@/Client/views/components/offline-access-panel";
+import { AutomaticWorkerRecords } from "@/Client/views/components/automatic-worker-records";
 
 export const dynamic = "force-dynamic";
 
@@ -23,18 +23,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
     listSitios(user),
     listChildren(user),
   ]);
-  const offlineChildren = user.role === "bhw" ? children : [];
   const today = todayInManila();
   return <AppShell user={user} title="Child records" eyebrow="Community health registry">
+    {user.role === "bhw" && <AutomaticWorkerRecords snapshot={{ user: { id: user.id, username: user.username, display_name: user.display_name }, children, barangays, puroks, savedAt: new Date().toISOString() }} />}
     <FeedbackDialog message={params.message} isError={params.feedbackError === "1"} feedbackId={params.feedbackId} />
-    {user.role === "bhw" && <OfflineAccessPanel snapshot={{
-      user: { id: user.id, username: user.username, display_name: user.display_name },
-      children: offlineChildren,
-      barangays,
-      puroks,
-      savedAt: new Date().toISOString(),
-    }} />}
-    <ChildRegistry records={children} barangays={barangays} puroks={puroks} sitios={sitios} today={today} initialQuery={q} initialBarangayId={barangay} initialPurokId={purok}>
+    <ChildRegistry key={children.map((child) => `${child.id}:${child.updated_at}`).join(",")} records={children} barangays={barangays} puroks={puroks} sitios={sitios} today={today} initialQuery={q} initialBarangayId={barangay} initialPurokId={purok}>
       <section className="panel form-panel"><p className="eyebrow">New record</p><h2>Add a child</h2><p className="muted">Keep names and birthdays accurate for monthly reporting.</p>
         {barangays.length ? <form action={saveChild} className="form-stack" data-offline-draft-form>
           <div className="field"><label htmlFor="name">Child&apos;s name</label><input id="name" name="name" maxLength={120} required /></div>

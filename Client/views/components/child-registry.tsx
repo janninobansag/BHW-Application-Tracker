@@ -5,6 +5,7 @@ import type { Barangay, Child, Purok, Sitio } from "@/Data/entities";
 import { ChildRecordFilters } from "@/Client/views/components/child-record-filters";
 import { ChildRecordsTable } from "@/Client/views/components/child-records-table";
 import { ExportExcelDialog } from "@/Client/views/components/export-excel-dialog";
+import { Plus, X } from "lucide-react";
 
 export function ChildRegistry({
   records,
@@ -30,6 +31,7 @@ export function ChildRegistry({
   const [query, setQuery] = useState(initialQuery);
   const [barangayId, setBarangayId] = useState(initialBarangayId);
   const [purokId, setPurokId] = useState(initialPurokId);
+  const [showNewRecord, setShowNewRecord] = useState(false);
   const normalizedQuery = query.trim().toLowerCase();
   const visibleRecords = records.filter((record) =>
     (!normalizedQuery || record.name.toLowerCase().includes(normalizedQuery) || record.parents.toLowerCase().includes(normalizedQuery))
@@ -63,7 +65,10 @@ export function ChildRegistry({
       <div className="stat"><span>Male</span><strong>{male}</strong><small>Recorded as M</small></div>
       <div className="stat"><span>Female</span><strong>{female}</strong><small>Recorded as F</small></div>
     </div>
-    <div className="workspace-grid">
+    <button className="primary-button phone-add-record" type="button" aria-expanded={showNewRecord} aria-controls="new-record-panel" onClick={() => setShowNewRecord((current) => !current)}>
+      {showNewRecord ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}{showNewRecord ? "Close new record" : "Add a child record"}
+    </button>
+    <div className={`workspace-grid registry-workspace${showNewRecord ? " show-new-record" : ""}`}>
       <section className="panel record-panel">
         <div className="section-heading"><div><p className="eyebrow">Registry</p><h2>Children in your care</h2></div><ExportExcelDialog barangays={barangays} puroks={puroks} sitios={sitios} /></div>
         <ChildRecordFilters
@@ -76,10 +81,11 @@ export function ChildRegistry({
           onBarangayChange={(value) => { setBarangayId(value); setPurokId(""); }}
           onPurokChange={setPurokId}
         />
+        <p className="registry-result-count" aria-live="polite">{visibleRecords.length} {visibleRecords.length === 1 ? "child" : "children"}{query || barangayId || purokId ? " matching your search and filters" : " in your care"}</p>
         {visibleRecords.length ? <ChildRecordsTable key={`${query}:${barangayId}:${purokId}`} records={visibleRecords} today={today} returnTo={returnTo} /> : <div className="empty-state"><strong>No children found</strong><p>{query || barangayId || purokId ? "Try another search, barangay, or Purok filter." : "Add the first child record using the form."}</p></div>}
         <p className="table-note">Ages use full months as of {today}. Search and filters update immediately.</p>
       </section>
-      {children}
+      <div id="new-record-panel" className="new-record-wrapper">{children}</div>
     </div>
   </>;
 }

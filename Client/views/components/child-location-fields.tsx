@@ -18,7 +18,9 @@ export function ChildLocationFields({
   const [purokId, setPurokId] = useState(initialPurokId);
   const availablePuroks = puroks.filter((purok) => purok.barangay_id === barangayId);
 
-  return <>
+  return <fieldset className="location-fieldset">
+    <legend>Record location</legend>
+    <p className="field-hint">Choose the Barangay first, then a Purok within it.</p>
     <div className="field"><label htmlFor="barangayId">Barangay</label><select id="barangayId" name="barangayId" required value={barangayId}
       onChange={(event) => { setBarangayId(event.target.value); setPurokId(""); }}>
       <option value="" disabled>Select a barangay</option>
@@ -29,5 +31,6 @@ export function ChildLocationFields({
       <option value="" disabled>{!barangayId ? "Select a barangay first" : availablePuroks.length ? "Select a Purok" : "No Puroks available"}</option>
       {availablePuroks.map((purok) => <option key={purok.id} value={purok.id}>{purok.name}</option>)}
     </select></div>
-  </>;
+      <small className="field-hint">{!barangayId ? "Puroks appear after choosing a Barangay." : availablePuroks.length ? "Only Puroks within the selected Barangay are shown." : "Ask the administrator to add or assign a Purok in this Barangay."}</small>
+  </fieldset>;
 }

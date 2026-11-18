@@ -27,14 +27,14 @@ export function ChildRecordsTable({ records, today, returnTo }: { records: Child
   const last = Math.min(first + pageSize, records.length);
 
   return <>
-    <div className="table-scroll"><table><thead><tr><th>Child</th><th>Age</th><th>Sex</th><th>Parents</th><th>Barangay / Purok / BHW</th><th><span className="sr-only">Action</span></th></tr></thead><tbody>
+    <div className="table-scroll registry-table"><table><thead><tr><th>Child</th><th>Age</th><th>Sex</th><th>Parents</th><th>Barangay / Purok / BHW</th><th><span className="sr-only">Action</span></th></tr></thead><tbody>
       {visibleChildren.map((child) => <tr key={child.id}>
-        <td><strong>{child.name}</strong><small>{child.birthday}</small></td>
-        <td>{ageInMonths(child.birthday, today)} months</td>
-        <td><span className="sex-pill">{child.sex}</span></td>
-        <td>{child.parents}</td>
-        <td><strong>{child.barangay_name}</strong><small>{child.purok_name || "Purok not specified"} · {child.bhw_names || "Unassigned"}</small></td>
-        <td className="record-actions-cell"><DropdownMenu>
+        <td className="record-child"><strong>{child.name}</strong><small>Born {child.birthday}</small></td>
+        <td className="record-age" data-label="Age">{ageInMonths(child.birthday, today)} months</td>
+        <td className="record-sex" data-label="Sex"><span className={`sex-pill ${child.sex === "F" ? "sex-pill-female" : "sex-pill-male"}`}>{child.sex}</span></td>
+        <td className="record-parents" data-label="Parents">{child.parents}</td>
+        <td className="record-location" data-label="Community"><div className="record-desktop-location"><strong>{child.barangay_name}</strong><small>{child.purok_name || "Purok not specified"} / {child.bhw_names || "Unassigned"}</small></div><details className="record-mobile-disclosure"><summary>View details</summary><dl><div><dt>Parent / guardian</dt><dd>{child.parents}</dd></div><div><dt>Barangay / Purok</dt><dd>{child.barangay_name} / {child.purok_name || "Purok not specified"}</dd></div><div><dt>Health worker</dt><dd>{child.bhw_names || "Unassigned"}</dd></div></dl></details></td>
+        <td className="record-actions-cell"><DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild><button type="button" className="record-menu-trigger" aria-label={`Actions for ${child.name}`}><MoreHorizontal aria-hidden="true" /></button></DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="record-menu-content">
             <DropdownMenuItem asChild className="record-menu-item"><Link href={`/records/${encodeURIComponent(child.id)}`}><Pencil aria-hidden="true" />Edit</Link></DropdownMenuItem>
@@ -46,7 +46,7 @@ export function ChildRecordsTable({ records, today, returnTo }: { records: Child
     <AlertDialog open={Boolean(deleteChild)} onOpenChange={(open) => { if (!open) setDeleteChild(null); }}>
       {deleteChild && <AlertDialogContent>
         <AlertDialogHeader><AlertDialogTitle>Delete child record?</AlertDialogTitle><AlertDialogDescription>This will permanently delete {deleteChild.name}&apos;s record. It will no longer appear in the Registry or Excel exports.</AlertDialogDescription></AlertDialogHeader>
-        <form action={deleteChildRecord}>
+        <form action={deleteChildRecord} data-offline-delete-form>
           <input type="hidden" name="childId" value={deleteChild.id} />
           <input type="hidden" name="updatedAt" value={deleteChild.updated_at ?? ""} />
           <input type="hidden" name="returnTo" value={returnTo} />

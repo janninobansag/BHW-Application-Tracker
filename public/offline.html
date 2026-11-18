@@ -1,109 +1,27 @@
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#166f62" />
-    <link rel="icon" type="image/png" sizes="64x64" href="/favicon-bhw.png" />
-    <title>Offline records | BHW Records</title>
-    <style>
-      :root { color-scheme: light; font-family: "Segoe UI", Arial, sans-serif; color: #18322f; background: #f4f7f5; }
-      * { box-sizing: border-box; }
-      body { min-height: 100vh; margin: 0; }
-      header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem max(1rem, calc((100vw - 76rem) / 2)); border-bottom: 1px solid #d8e5df; background: #fff; }
-      .brand { display: flex; align-items: center; gap: .75rem; font-weight: 700; }
-      .mark { display: grid; width: 2.6rem; height: 2.6rem; place-items: center; overflow: hidden; border: 1px solid #d8e5df; border-radius: .7rem; background: #fff; object-fit: contain; }
-      .status { display: inline-flex; align-items: center; gap: .45rem; padding: .4rem .65rem; border: 1px solid #d8e5df; border-radius: 99px; color: #315650; font-size: .88rem; }
-      .status::before { width: .5rem; height: .5rem; border-radius: 50%; background: #d88a1d; content: ""; }
-      .status.online::before { background: #14836f; }
-      main { width: min(100% - 2rem, 76rem); margin: 2rem auto; }
-      .card { padding: clamp(1rem, 3vw, 1.5rem); border: 1px solid #d8e5df; border-radius: .8rem; background: #fff; box-shadow: 0 8px 24px rgb(22 52 45 / 4%); }
-      h1, h2, h3, p { margin-top: 0; }
-      h1 { margin-bottom: .5rem; font-size: clamp(1.5rem, 3vw, 2rem); }
-      h2 { margin-bottom: .4rem; font-size: 1.25rem; }
-      p { color: #526964; line-height: 1.55; }
-      .eyebrow { margin-bottom: .4rem; color: #147867; font-size: .76rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-      .muted { color: #62756f; font-size: .9rem; }
-      .stack { display: grid; gap: 1rem; }
-      .field { display: grid; gap: .4rem; }
-      label { font-size: .92rem; font-weight: 650; }
-      input, select { width: 100%; min-height: 2.8rem; padding: .65rem .75rem; border: 1px solid #cbdcd3; border-radius: .45rem; background: #fff; color: #18322f; font: inherit; }
-      input:focus, select:focus, button:focus-visible, a:focus-visible { outline: 3px solid #5bc1a7; outline-offset: 2px; }
-      button, .button { display: inline-flex; align-items: center; justify-content: center; min-height: 2.65rem; padding: .6rem .9rem; border: 1px solid #c6e4d8; border-radius: .45rem; background: #eef8f4; color: #086f60; font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }
-      button.primary { border-color: #166f62; background: #166f62; color: #fff; }
-      button:disabled { opacity: .55; cursor: not-allowed; }
-      .actions { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
-      .unlock { width: min(100%, 32rem); margin: 3rem auto; }
-      .workspace-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
-      .workspace-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(19rem, .9fr); gap: 1rem; align-items: start; }
-      .record-list { display: grid; gap: .65rem; margin-top: 1rem; }
-      .record { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; padding: .85rem; border: 1px solid #e0e9e4; border-radius: .5rem; }
-      .record strong, .record small { display: block; }
-      .record small { margin-top: .25rem; color: #5d716b; line-height: 1.4; }
-      .record .record-state { color: #94620f; font-size: .78rem; font-weight: 700; }
-      .record button { min-height: 2.2rem; padding: .35rem .65rem; font-size: .86rem; }
-      .notice { margin: 1rem 0 0; padding: .75rem .9rem; border: 1px solid #d8e5df; border-radius: .45rem; background: #f7faf8; }
-      .notice.error { border-color: #ecc7c3; background: #fff7f6; color: #9e382f; }
-      .notice.success { border-color: #bfe5d5; background: #f0faf5; color: #146d53; }
-      .conflict { margin-top: 1rem; padding: 1rem; border: 1px solid #eacb8d; border-radius: .55rem; background: #fffaf0; }
-      .conflict h3 { margin-bottom: .4rem; font-size: 1rem; }
-      .counts { display: flex; flex-wrap: wrap; gap: .6rem; margin: .5rem 0 1rem; }
-      .count { padding: .4rem .6rem; border-radius: .4rem; background: #f0f7f4; color: #315650; font-size: .88rem; }
-      [hidden] { display: none !important; }
-      @media (max-width: 760px) { .workspace-grid { grid-template-columns: 1fr; } main { margin-top: 1rem; } header { padding: .8rem 1rem; } }
-    </style>
-    <script src="/offline.js" defer></script>
-  </head>
-  <body>
-    <header>
-      <div class="brand"><img class="mark" src="/icons/bhw-records-192.png" alt="" width="192" height="192" /><span>BHW Records<br /><small class="muted">Offline workspace</small></span></div>
-      <span id="connection-status" class="status">Checking connection</span>
-    </header>
-    <main>
-      <section id="unlock-panel" class="card unlock">
-        <p class="eyebrow">Private device copy</p>
-        <h1>Unlock offline records</h1>
-        <p>Use the BHW username and offline passphrase used when saving the encrypted copy on this device.</p>
-        <form id="unlock-form" class="stack">
-          <div class="field"><label for="offline-username">BHW username</label><input id="offline-username" name="username" autocomplete="username" required /></div>
-          <div class="field"><label for="offline-passphrase">Offline passphrase</label><input id="offline-passphrase" name="passphrase" type="password" autocomplete="current-password" required /></div>
-          <button class="primary" type="submit">Unlock records</button>
-        </form>
-        <p id="unlock-message" class="notice" role="status" hidden></p>
-        <p class="muted" style="margin:.9rem 0 0">No copy found? Connect to the internet, sign in, and save an offline copy from Child records.</p>
-        <a class="button" style="margin-top:.7rem" href="/login">Sign in online</a>
-      </section>
-
-      <section id="workspace" hidden>
-        <div class="workspace-header">
-          <div><p class="eyebrow">Assigned registry</p><h1 id="welcome"></h1><p id="snapshot-date" class="muted"></p></div>
-          <div class="actions"><button id="sync-button" class="primary" type="button">Sync changes</button><a class="button" href="/">Online records</a><button id="lock-button" type="button">Lock</button></div>
-        </div>
-        <p id="workspace-message" class="notice" role="status" hidden></p>
-        <div id="conflicts" hidden></div>
-        <div class="counts"><span class="count" id="count-total"></span><span class="count" id="count-male"></span><span class="count" id="count-female"></span><span class="count" id="count-pending"></span></div>
-        <div class="workspace-grid">
-          <section class="card">
-            <div class="workspace-header"><div><p class="eyebrow">Saved on this device</p><h2>Child records</h2></div><button id="new-record-button" type="button">Add child</button></div>
-            <div class="field"><label for="record-search">Search names</label><input id="record-search" type="search" placeholder="Child or parent name" /></div>
-            <div id="record-list" class="record-list"></div>
-            <p id="empty-records" class="muted" hidden>No matching records on this device.</p>
-          </section>
-          <section id="record-editor" class="card" hidden>
-            <p class="eyebrow">Offline change</p><h2 id="editor-title">Add a child</h2>
-            <form id="child-form" class="stack">
-              <input id="record-id" type="hidden" />
-              <div class="field"><label for="child-name">Child's name</label><input id="child-name" maxlength="120" required /></div>
-              <div class="field"><label for="child-birthday">Date of birth</label><input id="child-birthday" type="date" required /><small id="birthday-hint" class="muted">Age appears after you choose a birthday.</small></div>
-              <div class="field"><label for="child-sex">Sex</label><select id="child-sex" required><option value="">Select</option><option value="F">F - Female</option><option value="M">M - Male</option></select></div>
-              <div class="field"><label for="child-parents">Parents' names</label><input id="child-parents" maxlength="240" required /></div>
-              <div class="field"><label for="child-barangay">Barangay</label><select id="child-barangay" required><option value="">Select a barangay</option></select></div>
-              <div class="field"><label for="child-purok">Purok</label><select id="child-purok" required><option value="">Select a Purok</option></select></div>
-              <div class="actions"><button id="save-record-button" class="primary" type="submit">Save offline</button><button id="cancel-edit-button" type="button">Cancel</button></div>
-            </form>
-          </section>
-        </div>
-      </section>
-    </main>
-  </body>
-</html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#166f62">
+<link rel="icon" href="/favicon-bhw.png"><title>Child records | BHW Records</title>
+<link rel="stylesheet" href="/records-ui.css"><link rel="stylesheet" href="/offline-ui.css">
+<script type="module" src="/offline.js"></script></head><body>
+<section id="access-panel" class="simple-page"><div class="simple-panel"><p class="eyebrow">Worker records</p><h1>Opening your records</h1><p class="muted">Your assigned records are available on this device after signing in online once.</p><p id="access-message" class="notice" role="status" hidden></p><a class="primary-button" href="/login">Sign in online</a></div></section>
+<div id="workspace" class="app-shell" hidden>
+<aside class="sidebar"><div class="brand"><img class="brand-mark" src="/icons/bhw-records-192.png" alt="" width="40" height="40"><span><strong>BHW Records</strong><small>Barangay health desk</small></span></div><nav class="side-nav" aria-label="Main navigation"><a href="#registry">Child records</a></nav><div class="sidebar-bottom"><span class="avatar" id="worker-avatar"></span><span><strong id="worker-name"></strong><small>Health worker</small></span></div></aside>
+<div class="main-column"><header class="topbar"><div class="mobile-brand"><img class="brand-mark" src="/icons/bhw-records-192.png" alt="" width="36" height="36"><strong>BHW Records</strong></div><div class="top-actions"><a href="/password">Change password</a></div></header>
+<main class="content"><div class="page-heading"><div><p class="eyebrow">Community health registry</p><h1>Child records</h1></div><span id="welcome" class="signed-in"></span></div>
+<div class="sync-status-row"><span id="connection-status" class="worker-sync-status" role="status"></span><span id="count-pending"></span><button id="sync-button" class="secondary-button" type="button">Retry sync</button></div>
+<p id="snapshot-date" class="table-note"></p><p id="workspace-message" class="notice" role="status" hidden></p><div id="conflicts" hidden></div>
+<div class="stats-grid" aria-label="Record totals"><div class="stat"><span>Total children</span><strong id="count-total">0</strong><small>In the current view</small></div><div class="stat"><span>Male</span><strong id="count-male">0</strong><small>Recorded as M</small></div><div class="stat"><span>Female</span><strong id="count-female">0</strong><small>Recorded as F</small></div></div>
+<button id="new-record-button" class="primary-button phone-add-record" type="button" aria-expanded="false" aria-controls="new-record-panel">+ Add a child record</button>
+<div id="registry-grid" class="workspace-grid registry-workspace"><section id="registry" class="panel record-panel"><div class="section-heading"><div><p class="eyebrow">Registry</p><h2>Children in your care</h2></div><button id="export-button" class="primary-button registry-export-button" type="button" disabled title="Excel export requires internet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5"/></svg><span class="export-label-desktop">Download formatted Excel</span><span class="export-label-mobile">Export Excel</span></button></div>
+<form class="filters registry-filters" aria-label="Filter child records" id="record-filters"><div class="field registry-search-field"><label for="record-search">Search records</label><div class="registry-search-input"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="record-search" type="search" placeholder="Child or parent name"></div></div><button id="filter-toggle" class="registry-filter-toggle" type="button" aria-expanded="false" aria-controls="registry-location-filters"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6m8 4v6"/></svg><span id="filter-toggle-label">Filters</span></button><div id="registry-location-filters" class="registry-filter-locations"><div class="field"><label for="filter-barangay">Barangay</label><select id="filter-barangay"><option value="">All assigned barangays</option></select></div><div class="field"><label for="filter-purok">Purok</label><select id="filter-purok" disabled><option value="">Select a barangay first</option></select></div></div><div id="active-location-filters" class="registry-active-filters" hidden><span id="active-location-label"></span><button id="clear-location-filters" type="button">Clear filters</button></div></form>
+<p id="registry-result-count" class="registry-result-count" aria-live="polite"></p>
+<div class="table-scroll registry-table"><table><thead><tr><th>Child</th><th>Age</th><th>Sex</th><th>Parents</th><th>Barangay / Purok / BHW</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody id="record-list"></tbody></table></div>
+<div id="empty-records" class="empty-state" hidden><strong>No children found</strong><p>Try another search or change the Barangay and Purok filters.</p></div>
+<nav class="records-pagination" aria-label="Child record pages"><span id="page-summary" aria-live="polite"></span><div><span id="page-number"></span><button id="page-previous" class="secondary-button" type="button">Previous</button><button id="page-next" class="secondary-button" type="button">Next</button></div></nav><p class="table-note">Changes are saved on this device and sync automatically when connected.</p></section>
+<div id="new-record-panel" class="new-record-wrapper"><section id="record-editor" class="panel form-panel"><p class="eyebrow">New record</p><h2 id="editor-title">Add a child</h2><p class="muted">Keep names and birthdays accurate for monthly reporting.</p><form id="child-form" class="form-stack"><input id="record-id" type="hidden"><input id="record-version" type="hidden"><div class="field"><label for="child-name">Child's name</label><input id="child-name" maxlength="120" required></div><div class="field"><label for="child-birthday">Birthday</label><input id="child-birthday" type="date" required><small id="birthday-hint" class="field-hint">Age appears after you choose a birthday.</small></div><div class="field"><label for="child-sex">Sex</label><select id="child-sex" required><option value="">Select F or M</option><option value="F">F - Female</option><option value="M">M - Male</option></select></div><div class="field"><label for="child-parents">Parents' names</label><input id="child-parents" maxlength="240" required></div><fieldset class="location-fieldset"><legend>Record location</legend><p class="field-hint">Choose the Barangay first, then a Purok within it.</p><div class="field"><label for="child-barangay">Barangay</label><select id="child-barangay" required></select></div><div class="field"><label for="child-purok">Purok</label><select id="child-purok" required></select></div></fieldset><div class="button-row"><button id="save-record-button" class="primary-button" type="submit">Save child record</button><button id="cancel-edit-button" class="secondary-button" type="button" hidden>Cancel</button></div></form></section></div></div></main>
+<nav class="phone-navigation phone-navigation-worker" aria-label="Mobile navigation"><a href="#registry" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v4H9zM9 12h6M9 16h6"/></svg><span>Records</span></a><button id="account-button" type="button" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 22v-2a8 8 0 0116 0v2"/></svg><span>Account</span></button></nav></div></div>
+<dialog id="delete-dialog" class="record-dialog" aria-labelledby="delete-title" aria-describedby="delete-description"><h2 id="delete-title">Delete child record?</h2><p id="delete-description"></p><div class="dialog-actions"><button id="cancel-delete" class="secondary-button" type="button">Cancel</button><button id="confirm-delete" class="delete-confirm-button" type="button">Delete record</button></div></dialog>
+<dialog id="feedback-dialog" class="record-dialog" aria-labelledby="feedback-title" aria-describedby="feedback-message"><h2 id="feedback-title">Changes saved</h2><p id="feedback-message"></p><div class="dialog-actions"><button id="feedback-close" class="primary-button" type="button">Close</button></div></dialog>
+<dialog id="account-dialog" class="record-dialog" aria-labelledby="account-title"><h2 id="account-title">Your account</h2><p id="account-name"></p><p class="muted">Account settings and sign-out require internet. Your record changes continue to save on this device.</p><div class="dialog-actions"><button id="account-close" class="secondary-button" type="button">Close</button><a class="primary-button" href="/password">Account settings</a></div></dialog>
+</body></html>

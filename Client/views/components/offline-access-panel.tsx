@@ -111,7 +111,7 @@ export function OfflineAccessPanel({ snapshot }: { snapshot: OfflineSnapshot }) 
   return <section className="panel offline-access-panel" aria-labelledby="offline-access-title">
     <p className="eyebrow">Offline access</p>
     <h2 id="offline-access-title">Assigned child records on this device</h2>
-    <p className="muted">Save an encrypted copy for offline viewing and editing. Queued changes sync when you reconnect. Admin tools and Excel export still need internet. The passphrase is not saved; if you forget it, unsynced edits cannot be recovered.</p>
+    <p className="muted">Prepare an encrypted copy of the records assigned to you. In Offline records, you can view, add, and edit children without a connection; queued changes sync when you reconnect. Admin tools and Excel export still need internet. Keep this passphrase safe because it is not stored.</p>
     <form className="offline-access-form" onSubmit={(event) => void saveCopy(event)}>
       <div className="field">
         <label htmlFor="offline-passphrase">Offline passphrase</label>
