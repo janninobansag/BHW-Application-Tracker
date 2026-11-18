@@ -1,5 +1,7 @@
 # Dependencies
 /node_modules/
+/backend/node_modules/
+/backend/dist/
 /.pnp
 .pnp.*
 # Keep authored Yarn tooling if the project adopts Yarn.
@@ -28,6 +30,8 @@ yarn-error.log*
 
 # Local environment and keys
 .env*
+!.env.example
+!**/.env.example
 .dev.vars*
 *.pem
 
@@ -40,6 +44,7 @@ yarn-error.log*
 /.codex/
 /outputs/
 /work/
+/backend/migration-data/
 
 # OS metadata
 .DS_Store

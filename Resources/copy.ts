@@ -4,7 +4,13 @@ export const siteCopy = {
   brand: "BHW Records",
   tagline: "Barangay health desk",
   navigation: { records: "Child records", admin: "Administration", signOut: "Sign out" },
-  csvHeaders: ["Child Name", "Birthday", "Age (Months)", "Sex", "Parents", "Barangay", "Assigned BHW", "Age As Of"],
+  csvTitle: "VITAMIN A AND DEWORMING",
+  csvLocationSuffix: "MINGLANILLA, CEBU",
+  csvHeaders: [
+    "NO.", "NAME", "DATE OF BIRTH", "PUROK", "MONTHS", "GENDER M/F",
+    "VITAMIN A 1ST DOSE", "VITAMIN A 2ND DOSE", "DEWORMING 1ST DOSE",
+    "DEWORMING 2ND DOSE", "GUARDIAN",
+  ],
 } as const;
 
 export const messages = {
@@ -24,6 +30,11 @@ export const messages = {
   barangayInvalid: "Enter a barangay name under 100 characters.",
   barangayExists: "Barangay already exists.",
   barangayAdded: "Barangay added.",
+  barangayUpdated: "Barangay updated.",
+  purokInvalid: "Enter a Purok name under 100 characters and select its barangay.",
+  purokExists: "That Purok already exists in this barangay.",
+  purokAdded: "Purok added.",
+  purokUpdated: "Purok updated.",
   bhwInvalid: "Use a valid username, name, and temporary password of 12–128 characters.",
   usernameExists: "Username already exists.",
   bhwCreated: "BHW account created. Assign a barangay before use.",

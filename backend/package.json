@@ -1,0 +1,25 @@
+{
+  "name": "bhw-render-api",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.13.0" },
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --import tsx --watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "export:d1": "node --env-file-if-exists=.env --import tsx scripts/migrate-d1-json.ts export",
+    "import:d1-json": "node --env-file-if-exists=.env --import tsx scripts/migrate-d1-json.ts import"
+  },
+  "dependencies": {
+    "@noble/hashes": "2.4.0",
+    "express": "^5.1.0",
+    "fflate": "0.7.4",
+    "mongodb": "^6.19.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.19.19",
+    "tsx": "^4.20.6",
+    "typescript": "5.9.3"
+  }
+}
