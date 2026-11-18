@@ -19,7 +19,7 @@ export type OfflineChildInput = {
 
 export type OfflinePendingChange = {
   id: string;
-  kind: "create" | "update";
+  kind: "create" | "update" | "delete";
   expectedUpdatedAt: string | null;
   child: OfflineChildInput;
   queuedAt: string;
@@ -35,6 +35,7 @@ export type OfflineVaultContents = {
   snapshot: OfflineSnapshot;
   pending: OfflinePendingChange[];
   conflicts?: OfflineConflict[];
+  draft?: { id: string; updatedAt: string; child: Omit<OfflineChildInput, "sex"> & { sex: string } };
 };
 
 export type OfflineVaultRecord = {

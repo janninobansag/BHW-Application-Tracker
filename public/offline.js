@@ -1,120 +1,13 @@
+import { activeWorkerId, readWorkerContents, queueWorkerChild, queueWorkerDelete, changeWorkerContents, syncWorkerChanges } from "/worker-offline-store.js";
+
 (() => {
-  const DATABASE = "bhw-offline-vault";
-  const STORE = "vaults";
-  const ITERATIONS = 310000;
   const $ = (id) => document.getElementById(id);
-  let vault = null;
   let contents = null;
-  let stateKey = null;
   let busy = false;
-  let autoLockTimer = null;
-
-  function base64ToBytes(value) {
-    return Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
-  }
-
-  function bytesToBase64(bytes) {
-    let binary = "";
-    for (const byte of bytes) binary += String.fromCharCode(byte);
-    return btoa(binary);
-  }
-
-  function openDatabase() {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DATABASE, 1);
-      request.onupgradeneeded = () => {
-        if (!request.result.objectStoreNames.contains(STORE)) {
-          request.result.createObjectStore(STORE, { keyPath: "username" });
-        }
-      };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error || new Error("Offline storage is unavailable."));
-    });
-  }
-
-  async function getVault(username) {
-    const database = await openDatabase();
-    return new Promise((resolve, reject) => {
-      const transaction = database.transaction(STORE, "readonly");
-      const request = transaction.objectStore(STORE).get(username.trim().toLowerCase());
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error || new Error("Could not read the offline copy."));
-      transaction.oncomplete = () => database.close();
-      transaction.onerror = () => reject(transaction.error || new Error("Could not read the offline copy."));
-    });
-  }
-
-  async function putVault(record) {
-    const database = await openDatabase();
-    return new Promise((resolve, reject) => {
-      const transaction = database.transaction(STORE, "readwrite");
-      transaction.objectStore(STORE).put(record);
-      transaction.oncomplete = () => { database.close(); resolve(); };
-      transaction.onerror = () => reject(transaction.error || new Error("Could not save offline changes."));
-      transaction.onabort = () => reject(transaction.error || new Error("Could not save offline changes."));
-    });
-  }
-
-  async function deriveKey(passphrase, salt) {
-    const material = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(passphrase),
-      "PBKDF2",
-      false,
-      ["deriveKey"],
-    );
-    return crypto.subtle.deriveKey(
-      { name: "PBKDF2", salt, iterations: ITERATIONS, hash: "SHA-256" },
-      material,
-      { name: "AES-GCM", length: 256 },
-      false,
-      ["encrypt", "decrypt"],
-    );
-  }
-
-  async function encryptState(state, passphrase) {
-    const salt = base64ToBytes(vault.salt);
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const key = stateKey || await deriveKey(passphrase, salt);
-    const additionalData = new TextEncoder().encode(`${vault.username}\n${vault.userId}`);
-    const ciphertext = await crypto.subtle.encrypt(
-      { name: "AES-GCM", iv, additionalData },
-      key,
-      new TextEncoder().encode(JSON.stringify(state)),
-    );
-    return {
-      username: contents.snapshot.user.username.trim().toLowerCase(),
-      userId: contents.snapshot.user.id,
-      salt: bytesToBase64(salt),
-      iv: bytesToBase64(iv),
-      ciphertext: bytesToBase64(new Uint8Array(ciphertext)),
-      updatedAt: new Date().toISOString(),
-    };
-  }
-
-  async function saveState() {
-    if (!vault || !contents) return;
-    const replacement = await encryptState(contents, "");
-    await putVault(replacement);
-    vault = replacement;
-  }
-
-  async function unlock(record, passphrase) {
-    const key = await deriveKey(passphrase, base64ToBytes(record.salt));
-    const plaintext = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: base64ToBytes(record.iv), additionalData: new TextEncoder().encode(`${record.username}\n${record.userId}`) },
-      key,
-      base64ToBytes(record.ciphertext),
-    );
-    const parsed = JSON.parse(new TextDecoder().decode(plaintext));
-    if (!parsed?.snapshot?.user?.id || parsed.snapshot.user.id !== record.userId || parsed.snapshot.user.username.trim().toLowerCase() !== record.username) {
-      throw new Error("This offline copy is invalid or incomplete.");
-    }
-    stateKey = key;
-    parsed.pending = Array.isArray(parsed.pending) ? parsed.pending : [];
-    parsed.conflicts = Array.isArray(parsed.conflicts) ? parsed.conflicts : [];
-    return parsed;
-  }
+  let saving = false;
+  let openedUserId = null;
+  let page = 1;
+  let deleteTarget = null;
 
   function setNotice(element, message, kind = "") {
     element.textContent = message;
@@ -125,13 +18,13 @@
   function setConnection() {
     const connected = navigator.onLine;
     const element = $("connection-status");
-    element.textContent = connected ? "Online" : "Offline";
+    element.textContent = connected ? "Online" : "Offline: saving on this device";
+    element.dataset.connected = String(connected);
     element.classList.toggle("online", connected);
     if ($("sync-button")) $("sync-button").disabled = !connected || busy || !contents?.pending.length;
-    if ($("lock-button")) $("lock-button").disabled = busy;
-    if ($("new-record-button")) $("new-record-button").disabled = busy;
-    if ($("record-search")) $("record-search").disabled = busy;
-    if ($("child-form")) $("child-form").querySelectorAll("input, select, button").forEach((field) => { field.disabled = busy; });
+    $("save-record-button").disabled = saving;
+    $("export-button").disabled = !connected;
+    $("export-button").title = connected ? "Return to the online registry to choose an Excel export" : "Excel export requires internet";
   }
 
   function todayInManila() {
@@ -158,6 +51,7 @@
   function currentRecords() {
     const records = new Map(contents.snapshot.children.map((child) => [child.id, { ...child }]));
     for (const pending of contents.pending) {
+      if (pending.kind === "delete") { records.delete(pending.id); continue; }
       const existing = records.get(pending.id) || {};
       const barangay = contents.snapshot.barangays.find((item) => item.id === pending.child.barangayId);
       const purok = contents.snapshot.puroks.find((item) => item.id === pending.child.purokId);
@@ -179,9 +73,9 @@
   }
 
   function setCounts(records) {
-    $("count-total").textContent = `${records.length} children`;
-    $("count-male").textContent = `${records.filter((item) => item.sex === "M").length} male`;
-    $("count-female").textContent = `${records.filter((item) => item.sex === "F").length} female`;
+    $("count-total").textContent = String(records.length);
+    $("count-male").textContent = String(records.filter((item) => item.sex === "M").length);
+    $("count-female").textContent = String(records.filter((item) => item.sex === "F").length);
     $("count-pending").textContent = `${contents.pending.length} pending sync`;
     $("sync-button").disabled = !navigator.onLine || busy || contents.pending.length === 0;
   }
@@ -193,30 +87,110 @@
     return element;
   }
 
+  function showFeedback(message) {
+    $("feedback-message").textContent = message;
+    $("feedback-dialog").showModal();
+  }
+
+  function askDelete(child) {
+    deleteTarget = child;
+    $("delete-description").textContent = `Delete ${child.name}'s record? The record will be removed from this device and deleted from the database when connected.`;
+    $("delete-dialog").showModal();
+  }
+
+  async function deleteRecord() {
+    if (!deleteTarget || saving) return;
+    const target = deleteTarget;
+    $("confirm-delete").disabled = true;
+    try {
+      contents = await queueWorkerDelete(target.id, target.updated_at || undefined);
+      $("delete-dialog").close();
+      deleteTarget = null;
+      if ($("record-id").value === target.id) openEditor(null, false);
+      renderRecords();
+      showFeedback("Record deleted on this device. The deletion syncs automatically when connected.");
+      if (navigator.onLine) void syncChanges();
+    } catch (error) {
+      $("delete-dialog").close();
+      setNotice($("workspace-message"), error instanceof Error ? error.message : "Could not save this deletion. Try again.", "error");
+    } finally { $("confirm-delete").disabled = false; }
+  }
+
   function renderRecords() {
+    if (!contents) return;
     const list = $("record-list");
     const query = $("record-search").value.trim().toLowerCase();
+    const barangay = $("filter-barangay").value;
+    const purok = $("filter-purok").value;
     const pendingIds = new Set(contents.pending.map((item) => item.id));
-    const records = currentRecords().filter((child) => `${child.name} ${child.parents}`.toLowerCase().includes(query));
+    const records = currentRecords().filter((child) => `${child.name} ${child.parents}`.toLowerCase().includes(query) && (!barangay || child.barangay_id === barangay) && (!purok || child.purok_id === purok));
+    const pages = Math.max(1, Math.ceil(records.length / 8));
+    page = Math.min(page, pages);
+    const first = (page - 1) * 8;
     list.replaceChildren();
-    for (const child of records) {
-      const card = document.createElement("article");
-      card.className = "record";
-      const details = document.createElement("div");
-      details.append(makeText("strong", "", child.name));
-      details.append(makeText("small", "", `${child.birthday} · ${ageInMonths(child.birthday)} months · ${child.sex} · ${child.parents}`));
-      details.append(makeText("small", "", `${child.barangay_name || "Barangay"} · ${child.purok_name || "Purok not specified"}`));
-      if (pendingIds.has(child.id)) details.append(makeText("small", "record-state", "Waiting to sync"));
-      const edit = document.createElement("button");
-      edit.type = "button";
-      edit.textContent = "Edit";
-      edit.addEventListener("click", () => openEditor(child));
-      card.append(details, edit);
-      list.append(card);
+    for (const child of records.slice(first, first + 8)) {
+      const row = document.createElement("tr");
+      const name = makeText("td", "record-child", "");
+      name.append(makeText("strong", "", child.name), makeText("small", "", `Born ${child.birthday}`));
+      if (pendingIds.has(child.id)) name.append(makeText("small", "record-pending", "Waiting to sync"));
+      const age = makeText("td", "record-age", `${ageInMonths(child.birthday)} months`); age.dataset.label = "Age";
+      const sex = makeText("td", "record-sex", ""); sex.dataset.label = "Sex"; sex.append(makeText("span", `sex-pill ${child.sex === "F" ? "sex-pill-female" : "sex-pill-male"}`, child.sex));
+      const parents = makeText("td", "record-parents", child.parents); parents.dataset.label = "Parents";
+      const location = makeText("td", "record-location", ""); location.dataset.label = "Community";
+      location.append(makeText("strong", "", child.barangay_name || "Barangay"), makeText("small", "", `${child.purok_name || "Purok not specified"} / ${child.bhw_names || contents.snapshot.user.display_name}`));
+      const desktopLocation = makeText("div", "record-desktop-location", "");
+      desktopLocation.append(...location.childNodes);
+      const disclosure = makeText("details", "record-mobile-disclosure", "");
+      disclosure.append(makeText("summary", "", "View details"));
+      const details = document.createElement("dl");
+      for (const [label, value] of [["Parent / guardian", child.parents], ["Barangay / Purok", `${child.barangay_name} / ${child.purok_name || "Purok not specified"}`], ["Health worker", child.bhw_names || contents.snapshot.user.display_name]]) {
+        const item = document.createElement("div");
+        item.append(makeText("dt", "", label), makeText("dd", "", value));
+        details.append(item);
+      }
+      disclosure.append(details);
+      location.append(desktopLocation, disclosure);
+      const actions = makeText("td", "record-actions-cell", "");
+      const trigger = makeText("button", "record-menu-trigger", "..."); trigger.type = "button"; trigger.setAttribute("aria-label", `Actions for ${child.name}`); trigger.setAttribute("aria-haspopup", "true"); trigger.setAttribute("aria-expanded", "false");
+      const menu = makeText("div", "record-menu-content cached-menu-content", ""); menu.setAttribute("popover", "auto");
+      const edit = makeText("button", "record-menu-item", "Edit"); edit.type = "button";
+      const remove = makeText("button", "record-menu-item record-menu-delete", "Delete"); remove.type = "button";
+      const closeMenu = () => { if (menu.hidePopover) menu.hidePopover(); else menu.hidden = true; trigger.setAttribute("aria-expanded", "false"); };
+      edit.addEventListener("click", () => { closeMenu(); openEditor(child); });
+      remove.addEventListener("click", () => { closeMenu(); askDelete(child); });
+      menu.append(edit, remove);
+      if (!menu.showPopover) menu.hidden = true;
+      menu.addEventListener("toggle", (event) => trigger.setAttribute("aria-expanded", String(event.newState === "open")));
+      trigger.addEventListener("click", () => {
+        const rect = trigger.getBoundingClientRect();
+        menu.style.left = `${Math.max(12, Math.min(window.innerWidth - 192, rect.right - 180))}px`;
+        menu.style.top = `${Math.max(12, Math.min(window.innerHeight - 120, rect.bottom + 4))}px`;
+        if (menu.showPopover) menu.togglePopover(); else menu.hidden = !menu.hidden;
+        trigger.setAttribute("aria-expanded", String(menu.showPopover ? menu.matches(":popover-open") : !menu.hidden));
+        edit.focus();
+      });
+      actions.append(trigger, menu); row.append(name, age, sex, parents, location, actions); list.append(row);
     }
     $("empty-records").hidden = records.length !== 0;
-    setCounts(currentRecords());
+    $("page-summary").textContent = `Showing ${records.length ? first + 1 : 0} to ${Math.min(first + 8, records.length)} of ${records.length} records`;
+    $("page-number").textContent = `Page ${page} of ${pages}`;
+    $("page-previous").disabled = page <= 1;
+    $("page-next").disabled = page >= pages;
+    setCounts(records);
+    $("registry-result-count").textContent = `${records.length} ${records.length === 1 ? "child" : "children"} in your care`;
+    const filterCount = Number(Boolean(barangay)) + Number(Boolean(purok));
+    $("filter-toggle-label").textContent = `Filters${filterCount ? ` (${filterCount})` : ""}`;
+    $("active-location-filters").hidden = !filterCount;
+    $("active-location-label").textContent = [contents.snapshot.barangays.find((item) => item.id === barangay)?.name, contents.snapshot.puroks.find((item) => item.id === purok)?.name].filter(Boolean).join(" / ");
     renderConflicts();
+  }
+
+  function fillFilterPuroks() {
+    const barangay = $("filter-barangay").value;
+    const field = $("filter-purok");
+    field.replaceChildren(new Option(barangay ? "All Puroks" : "Select a barangay first", ""));
+    for (const item of contents.snapshot.puroks.filter((item) => item.barangay_id === barangay)) field.add(new Option(item.name, item.id));
+    field.disabled = !barangay;
   }
 
   function fillPuroks(selectedId = "") {
@@ -229,10 +203,11 @@
     field.value = selectedId;
   }
 
-  function openEditor(child = null) {
+  function openEditor(child = null, focus = true) {
     const form = $("child-form");
     form.reset();
     $("record-id").value = child?.id || "";
+    $("record-version").value = child?.updated_at || contents.snapshot.children.find((item) => item.id === child?.id)?.updated_at || "";
     $("child-name").value = child?.name || "";
     $("child-birthday").value = child?.birthday || "";
     $("child-birthday").max = todayInManila();
@@ -244,10 +219,16 @@
     $("child-barangay").value = child?.barangay_id || "";
     fillPuroks(child?.purok_id || "");
     $("editor-title").textContent = child ? "Edit child record" : "Add a child";
-    $("save-record-button").textContent = child ? "Save offline changes" : "Save offline";
+    $("save-record-button").textContent = child ? "Save changes" : "Save child record";
     $("record-editor").hidden = false;
-    $("record-editor").scrollIntoView({ behavior: "smooth", block: "start" });
-    $("child-name").focus();
+    $("cancel-edit-button").hidden = !child;
+    if (focus) {
+      $("registry-grid").classList.add("show-new-record");
+      $("new-record-button").setAttribute("aria-expanded", "true");
+      $("new-record-button").textContent = "Close new record";
+      $("record-editor").scrollIntoView({ behavior: "smooth", block: "start" });
+      $("child-name").focus({ preventScroll: true });
+    }
   }
 
   function validateChild(child) {
@@ -275,137 +256,59 @@
     const problem = validateChild(child);
     if (problem) return setNotice($("workspace-message"), problem, "error");
 
+    if (saving) return;
+    saving = true;
+    setConnection();
     const id = $("record-id").value || crypto.randomUUID();
-    const queued = contents.pending.find((item) => item.id === id);
-    const original = contents.snapshot.children.find((item) => item.id === id);
-    const kind = queued?.kind || (original ? "update" : "create");
-    const expectedUpdatedAt = queued ? queued.expectedUpdatedAt : (original?.updated_at || null);
-    const next = {
-      id,
-      kind,
-      expectedUpdatedAt,
-      child,
-      queuedAt: queued?.queuedAt || new Date().toISOString(),
-    };
-    const index = contents.pending.findIndex((item) => item.id === id);
-    if (index >= 0) contents.pending[index] = next;
-    else contents.pending.push(next);
-    contents.conflicts = contents.conflicts.filter((item) => item.id !== id);
-
     try {
-      await saveState();
-      $("record-editor").hidden = true;
-      setNotice($("workspace-message"), "Saved on this device. It will sync when you are online.", "success");
+      contents = await queueWorkerChild(child, id, $("record-version").value || undefined);
+      $("record-id").value = id;
+      await changeWorkerContents((state) => { delete state.draft; });
+      openEditor(null, false);
+      $("registry-grid").classList.remove("show-new-record");
+      $("new-record-button").setAttribute("aria-expanded", "false");
+      $("new-record-button").textContent = "+ Add a child record";
+      showFeedback("Saved on this device. Changes sync automatically when connected.");
       renderRecords();
       if (navigator.onLine) void syncChanges();
-    } catch {
-      setNotice($("workspace-message"), "Could not save to this device. Check available storage and try again.", "error");
-    }
-  }
-
-  async function refreshSnapshot() {
-    const endpoints = ["children", "barangays", "puroks"];
-    const responses = await Promise.all(endpoints.map((path) => fetch(`/api/backend/${path}`, {
-      credentials: "same-origin",
-      cache: "no-store",
-    })));
-    const unauthorized = responses.find((response) => response.status === 401);
-    if (unauthorized) throw new Error("Sign in online again before syncing queued records.");
-    const failed = responses.find((response) => !response.ok);
-    if (failed) throw new Error("The BHW service could not refresh the assigned records.");
-    const [childrenResult, barangaysResult, puroksResult] = await Promise.all(responses.map((response) => response.json()));
-    return {
-      user: contents.snapshot.user,
-      children: childrenResult.children,
-      barangays: barangaysResult.barangays,
-      puroks: puroksResult.puroks,
-      savedAt: new Date().toISOString(),
-    };
-  }
-
-  async function fetchCurrentChild(id) {
-    try {
-      const response = await fetch("/api/backend/children", { credentials: "same-origin", cache: "no-store" });
-      if (!response.ok) return null;
-      const data = await response.json();
-      return data.children.find((item) => item.id === id) || null;
-    } catch {
-      return null;
-    }
+    } catch (error) {
+      setNotice($("workspace-message"), error instanceof Error ? error.message : "Could not save to this device. Keep the form open and retry.", "error");
+    } finally { saving = false; setConnection(); }
   }
 
   async function syncChanges() {
-    if (!contents?.pending.length || busy) return;
-    if (!navigator.onLine) return setNotice($("workspace-message"), "You are offline. Queued changes remain saved on this device.", "error");
+    if (!contents || busy || !navigator.onLine) return;
     busy = true;
     setConnection();
-    setNotice($("workspace-message"), "Syncing queued changes…");
     try {
-      for (const pending of [...contents.pending]) {
-        const response = await fetch("/api/backend/children", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            id: pending.id,
-            ...pending.child,
-            expectedUpdatedAt: pending.expectedUpdatedAt,
-          }),
-        });
-        if (response.status === 409) {
-          const remote = await fetchCurrentChild(pending.id);
-          contents.conflicts = contents.conflicts.filter((item) => item.id !== pending.id);
-          contents.conflicts.push({ id: pending.id, remote, detectedAt: new Date().toISOString() });
-          await saveState();
-          setNotice($("workspace-message"), `A newer online version of ${pending.child.name} exists. Choose which version to keep below.`, "error");
-          renderRecords();
-          return;
-        }
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          if (response.status === 401) throw new Error("Sign in online again before syncing queued records. Your offline changes are still saved.");
-          if (response.status === 400) throw new Error(`${result.message || "This record no longer matches your assignments."} Your offline changes are still saved.`);
-          throw new Error(`${result.message || "The service could not save a record."} Your offline changes are still saved.`);
-        }
-        const serverChild = result.child || {
-          id: pending.id,
-          name: pending.child.name,
-          birthday: pending.child.birthday,
-          sex: pending.child.sex,
-          parents: pending.child.parents,
-          barangay_id: pending.child.barangayId,
-          purok_id: pending.child.purokId,
-          created_by: contents.snapshot.user.id,
-          created_at: pending.queuedAt,
-          updated_at: new Date().toISOString(),
-        };
-        serverChild.barangay_name = contents.snapshot.barangays.find((item) => item.id === pending.child.barangayId)?.name || "";
-        serverChild.purok_name = contents.snapshot.puroks.find((item) => item.id === pending.child.purokId)?.name || "";
-        const storedIndex = contents.snapshot.children.findIndex((item) => item.id === pending.id);
-        if (storedIndex >= 0) contents.snapshot.children[storedIndex] = serverChild;
-        else contents.snapshot.children.push(serverChild);
-        contents.pending = contents.pending.filter((item) => item.id !== pending.id);
-        await saveState();
-        renderRecords();
-      }
-      try {
-        contents.snapshot = await refreshSnapshot();
-        await saveState();
-      } catch (refreshError) {
-        if (contents.pending.length) throw refreshError;
-      }
-      setNotice($("workspace-message"), "All queued changes are synced.", "success");
+      const refreshed = await syncWorkerChanges();
+      if (!refreshed || activeWorkerId() !== openedUserId) return closeWorkspace();
+      contents = refreshed;
+      if (!["child-name", "child-birthday", "child-parents", "record-id", "child-sex", "child-barangay", "child-purok"].some((id) => $(id).value)) renderLookups();
       renderRecords();
-    } catch (error) {
-      setNotice($("workspace-message"), error instanceof Error ? error.message : "Sync failed. Your offline changes are still saved.", "error");
-    } finally {
-      busy = false;
+      if (contents.conflicts.length) setNotice($("workspace-message"), "Some records changed online. Review the versions below before syncing those changes.", "error");
+      else setNotice($("workspace-message"), "");
       setConnection();
-      renderRecords();
-    }
+      const editing = ["child-name", "child-birthday", "child-parents", "record-id", "child-sex", "child-barangay", "child-purok"].some((id) => $(id).value);
+      if (!contents.pending.length && !contents.draft && !editing && !document.querySelector("dialog[open]")) {
+        // Verify that the full page is available before leaving the working cache.
+        const onlinePage = await fetch("/", { cache: "no-store", signal: AbortSignal.timeout(10000) });
+        const stillEditing = ["child-name", "child-birthday", "child-parents", "record-id", "child-sex", "child-barangay", "child-purok"].some((id) => $(id).value);
+        if (onlinePage.ok && !stillEditing && !document.querySelector("dialog[open]")) {
+          const params = new URLSearchParams();
+          if ($("record-search").value) params.set("q", $("record-search").value);
+          if ($("filter-barangay").value) params.set("barangay", $("filter-barangay").value);
+          if ($("filter-purok").value) params.set("purok", $("filter-purok").value);
+          window.location.replace(`/${params.size ? `?${params}` : ""}`);
+        }
+      }
+    } catch (error) {
+      setNotice($("workspace-message"), error instanceof Error ? error.message : "Connection unavailable. Changes remain saved and will retry automatically.", "error");
+    } finally { busy = false; setConnection(); }
   }
 
   async function resolveConflict(id, action) {
+    contents = await changeWorkerContents((contents) => {
     const conflict = contents.conflicts.find((item) => item.id === id);
     const pending = contents.pending.find((item) => item.id === id);
     if (!conflict || !pending) return;
@@ -415,7 +318,7 @@
       contents.pending = contents.pending.filter((item) => item.id !== id);
     } else if (action === "local" && conflict.remote) {
       pending.expectedUpdatedAt = conflict.remote.updated_at || null;
-      pending.kind = "update";
+      if (pending.kind !== "delete") pending.kind = "update";
     } else if (action === "copy") {
       const nextId = crypto.randomUUID();
       contents.snapshot.children = contents.snapshot.children.filter((item) => item.id !== id);
@@ -423,7 +326,7 @@
       contents.pending.push({ ...pending, id: nextId, kind: "create", expectedUpdatedAt: null, queuedAt: new Date().toISOString() });
     }
     contents.conflicts = contents.conflicts.filter((item) => item.id !== id);
-    await saveState();
+    });
     renderRecords();
     setNotice($("workspace-message"), action === "server" ? "The online version is now on this device." : "Saved your offline version choice. Sync again to send it.", "success");
     if (action !== "server" && navigator.onLine) void syncChanges();
@@ -464,10 +367,10 @@
         const keepLocal = document.createElement("button");
         keepLocal.type = "button";
         keepLocal.className = "primary";
-        keepLocal.textContent = "Keep my offline changes";
+        keepLocal.textContent = pending.kind === "delete" ? "Delete the updated record" : "Keep my changes";
         keepLocal.addEventListener("click", () => void resolveConflict(conflict.id, "local"));
         actions.append(keepServer, keepLocal);
-      } else {
+      } else if (pending.kind !== "delete") {
         const copy = document.createElement("button");
         copy.type = "button";
         copy.className = "primary";
@@ -480,30 +383,34 @@
     }
   }
 
-  async function handleUnlock(event) {
-    event.preventDefault();
-    const username = $("offline-username").value.trim().toLowerCase();
-    const passphrase = $("offline-passphrase").value;
-    setNotice($("unlock-message"), "Unlocking encrypted copy…");
+  async function openWorkspace() {
     try {
-      const record = await getVault(username);
-      if (!record) throw new Error("No offline copy was found for that username on this device.");
-      const unlocked = await unlock(record, passphrase);
-      vault = record;
-      contents = unlocked;
-      $("offline-passphrase").value = "";
-      $("unlock-panel").hidden = true;
+      contents = await readWorkerContents();
+      if (!contents) throw new Error("Sign in as a worker while online once on this device. Offline access will then be prepared automatically.");
+      openedUserId = contents.snapshot.user.id;
+      $("access-panel").hidden = true;
       $("workspace").hidden = false;
-      $("welcome").textContent = `Hello, ${contents.snapshot.user.display_name}`;
-      $("snapshot-date").textContent = `Offline copy saved ${new Date(contents.snapshot.savedAt).toLocaleString()}.`;
+      $("welcome").textContent = `Signed in as ${contents.snapshot.user.display_name}`;
+      $("worker-name").textContent = contents.snapshot.user.display_name;
+      $("worker-avatar").textContent = contents.snapshot.user.display_name.charAt(0).toUpperCase();
+      $("account-name").textContent = contents.snapshot.user.display_name;
       renderLookups();
+      const params = new URLSearchParams(window.location.search);
+      $("record-search").value = params.get("q") || "";
+      $("filter-barangay").value = params.get("barangay") || "";
+      fillFilterPuroks(); $("filter-purok").value = params.get("purok") || "";
       renderRecords();
       setConnection();
-      resetAutoLock();
-      if (contents.pending.length) setNotice($("workspace-message"), `${contents.pending.length} change${contents.pending.length === 1 ? " is" : "s are"} waiting to sync.`);
-      if (navigator.onLine && contents.pending.length) void syncChanges();
+      openEditor(null, false);
+      if (contents.draft) {
+        const { id, child, updatedAt } = contents.draft;
+        openEditor({ id, updated_at: updatedAt, name: child.name, birthday: child.birthday, sex: child.sex, parents: child.parents, barangay_id: child.barangayId, purok_id: child.purokId });
+        $("editor-title").textContent = id ? "Edit child record" : "Add a child";
+        setNotice($("workspace-message"), "Your unfinished form was kept when the connection changed. Continue filling it in, then save.");
+      }
+      if (navigator.onLine) void syncChanges();
     } catch (error) {
-      setNotice($("unlock-message"), error instanceof Error ? error.message : "Could not unlock this copy.", "error");
+      setNotice($("access-message"), error instanceof Error ? error.message : "Offline storage is unavailable in this browser.", "error");
     }
   }
 
@@ -511,36 +418,58 @@
     const barangay = $("child-barangay");
     barangay.replaceChildren(new Option("Select a barangay", ""));
     for (const item of contents.snapshot.barangays) barangay.add(new Option(item.name, item.id));
-    $("snapshot-date").textContent = `Offline copy saved ${new Date(contents.snapshot.savedAt).toLocaleString()}.`;
+    $("snapshot-date").textContent = `Last updated ${new Date(contents.snapshot.savedAt).toLocaleString()}.`;
+    const selected = $("filter-barangay").value;
+    const selectedPurok = $("filter-purok").value;
+    $("filter-barangay").replaceChildren(new Option("All assigned barangays", ""));
+    for (const item of contents.snapshot.barangays) $("filter-barangay").add(new Option(item.name, item.id));
+    $("filter-barangay").value = selected;
+    fillFilterPuroks(); $("filter-purok").value = selectedPurok;
   }
 
-  function lockWorkspace() {
-    clearTimeout(autoLockTimer);
+  function closeWorkspace() {
     contents = null;
-    vault = null;
-    stateKey = null;
     $("workspace").hidden = true;
-    $("unlock-panel").hidden = false;
-    $("record-editor").hidden = true;
-    setNotice($("unlock-message"), "Offline records are locked.", "success");
+    $("access-panel").hidden = false;
+    $("record-list").replaceChildren();
+    $("conflicts").replaceChildren();
+    $("child-form").reset();
+    setNotice($("access-message"), "Local access ended. Sign in online to continue with your account.");
   }
 
-  function resetAutoLock() {
-    clearTimeout(autoLockTimer);
-    if (contents) autoLockTimer = setTimeout(lockWorkspace, 5 * 60 * 1000);
-  }
-
-  $("unlock-form").addEventListener("submit", (event) => void handleUnlock(event));
   $("child-form").addEventListener("submit", (event) => void saveChild(event));
   $("child-birthday").addEventListener("change", updateBirthdayHint);
   $("child-barangay").addEventListener("change", () => fillPuroks());
-  $("record-search").addEventListener("input", renderRecords);
-  $("new-record-button").addEventListener("click", () => openEditor());
-  $("cancel-edit-button").addEventListener("click", () => { $("record-editor").hidden = true; });
+  $("record-search").addEventListener("input", () => { page = 1; renderRecords(); });
+  $("record-filters").addEventListener("submit", (event) => event.preventDefault());
+  $("filter-toggle").addEventListener("click", () => { const expanded = $("record-filters").classList.toggle("filters-expanded"); $("filter-toggle").setAttribute("aria-expanded", String(expanded)); });
+  $("clear-location-filters").addEventListener("click", () => { $("filter-barangay").value = ""; fillFilterPuroks(); page = 1; renderRecords(); });
+  $("filter-barangay").addEventListener("change", () => { fillFilterPuroks(); page = 1; renderRecords(); });
+  $("filter-purok").addEventListener("change", () => { page = 1; renderRecords(); });
+  $("page-previous").addEventListener("click", () => { page = Math.max(1, page - 1); renderRecords(); });
+  $("page-next").addEventListener("click", () => { page += 1; renderRecords(); });
+  $("confirm-delete").addEventListener("click", () => void deleteRecord());
+  $("cancel-delete").addEventListener("click", () => $("delete-dialog").close());
+  $("feedback-close").addEventListener("click", () => $("feedback-dialog").close());
+  $("account-close").addEventListener("click", () => $("account-dialog").close());
+  $("account-button").addEventListener("click", () => $("account-dialog").showModal());
+  $("export-button").addEventListener("click", () => {
+    if (["child-name", "child-birthday", "child-parents", "record-id"].some((id) => $(id).value)) return showFeedback("Save or cancel your current record before returning to the online registry for Excel export.");
+    if (navigator.onLine) window.location.assign(new URL("/", window.location.origin).href);
+  });
+  $("new-record-button").addEventListener("click", () => {
+    const open = $("registry-grid").classList.toggle("show-new-record");
+    $("new-record-button").setAttribute("aria-expanded", String(open));
+    $("new-record-button").textContent = open ? "Close new record" : "+ Add a child record";
+    if (open) $("child-name").focus();
+  });
+  $("cancel-edit-button").addEventListener("click", () => { openEditor(null, false); $("registry-grid").classList.remove("show-new-record"); $("new-record-button").setAttribute("aria-expanded", "false"); });
   $("sync-button").addEventListener("click", () => void syncChanges());
-  $("lock-button").addEventListener("click", lockWorkspace);
-  window.addEventListener("online", () => { setConnection(); if (contents?.pending.length) void syncChanges(); });
+  window.addEventListener("online", () => { setConnection(); if (contents) void syncChanges(); });
   window.addEventListener("offline", setConnection);
-  ["pointerdown", "keydown", "touchstart"].forEach((eventName) => window.addEventListener(eventName, resetAutoLock, { passive: true }));
+  window.addEventListener("storage", () => { if (activeWorkerId() !== openedUserId) closeWorkspace(); });
+  window.addEventListener("focus", () => { if (activeWorkerId() !== openedUserId) closeWorkspace(); else if (navigator.onLine) void syncChanges(); });
+  setInterval(() => { if (contents && navigator.onLine) void syncChanges(); }, 30000);
+  void openWorkspace();
   setConnection();
 })();

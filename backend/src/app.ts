@@ -271,6 +271,7 @@ router.get("/api/admin/users", requireAdmin, async (_req, res, next) => {
 router.post("/api/children", async (req, res, next) => {
   try {
     const user = res.locals.user as User;
+    if (req.body.offlineUserId && (req.body.offlineUserId !== user.id || user.role !== "bhw")) return message(res, 403, "Sign in to the worker account that saved these offline changes.");
     const { id, name, birthday, sex, parents, barangayId, purokId, expectedUpdatedAt, updatedAt } = req.body;
     const hasOfflineVersion = Object.prototype.hasOwnProperty.call(req.body, "expectedUpdatedAt");
     const expectedVersion = hasOfflineVersion ? expectedUpdatedAt : updatedAt;
@@ -308,13 +309,20 @@ router.post("/api/children", async (req, res, next) => {
 router.delete("/api/children/:id", async (req, res, next) => {
   try {
     const user = res.locals.user as User;
+    const offlineDelete = Boolean(req.body.offlineUserId);
+    if (offlineDelete && (req.body.offlineUserId !== user.id || user.role !== "bhw")) return message(res, 403, "Sign in to the worker account that saved these offline changes.");
     const id = String(req.params.id);
     const updatedAt = typeof req.body.updatedAt === "string" ? req.body.updatedAt : "";
     const db = await getDb();
     const child = await db.collection<Child>("children").findOne({ id });
+    if (!child && offlineDelete) return res.json({ message: "Child record is already deleted." });
     if (!child || !(await canAccessPurok(user, child.purok_id, child.barangay_id))) return message(res, 404, "Record unavailable.");
+    if (offlineDelete && !updatedAt) {
+      const created = req.body.offlineCreatedChild;
+      if (!created || child.created_by !== user.id || child.name !== created.name || child.birthday !== created.birthday || child.sex !== created.sex || child.parents !== created.parents || child.barangay_id !== created.barangayId || child.purok_id !== created.purokId) return message(res, 409, "This record changed online. Review it before deleting.");
+    }
     if (updatedAt && child.updated_at !== updatedAt) return message(res, 409, "This record changed after you opened it. Reload and review it before deleting.");
-    const filter = updatedAt ? { id, updated_at: updatedAt } : { id };
+    const filter = updatedAt || offlineDelete ? { id, updated_at: updatedAt || child.updated_at } : { id };
     const result = await db.collection<Child>("children").deleteOne(filter);
     if (!result.deletedCount) return message(res, 409, "This record changed before it could be deleted. Reload and try again.");
     return res.json({ message: "Child record deleted." });

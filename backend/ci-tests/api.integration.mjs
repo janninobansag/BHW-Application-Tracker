@@ -156,12 +156,27 @@ test("authenticated worker CRUD, assignment access, and filtered Excel export", 
   assert.match(sheet, /<f>COUNTIF\(F7:F7,&quot;F&quot;\)<\/f><v>1<\/v>/);
   assert.match(sheet, /<f>COUNTA\(B7:B7\)<\/f><v>1<\/v>/);
 
+  const staleOfflineDelete = await request(`/api/children/${encodeURIComponent(created.id)}`, {
+    method: "DELETE", cookie: workerLogin.cookie,
+    body: { updatedAt: "older-offline-version", offlineUserId: worker.id },
+  });
+  assert.equal(staleOfflineDelete.status, 409, "offline deletion must not erase a newer online record");
+  const wrongOfflineAccount = await request(`/api/children/${encodeURIComponent(created.id)}`, {
+    method: "DELETE", cookie: workerLogin.cookie,
+    body: { updatedAt: updated.updated_at, offlineUserId: "another-worker" },
+  });
+  assert.equal(wrongOfflineAccount.status, 403);
   const deleteChild = await request(`/api/children/${encodeURIComponent(created.id)}`, {
     method: "DELETE",
     cookie: workerLogin.cookie,
     body: { updatedAt: updated.updated_at },
   });
   assert.equal(deleteChild.status, 200);
+  const repeatedOfflineDelete = await request(`/api/children/${encodeURIComponent(created.id)}`, {
+    method: "DELETE", cookie: workerLogin.cookie,
+    body: { updatedAt: updated.updated_at, offlineUserId: worker.id },
+  });
+  assert.equal(repeatedOfflineDelete.status, 200, "replaying a deletion after a lost response must succeed");
   const afterDelete = await request(`/api/children?q=Updated%20Test%20Child`, { cookie: workerLogin.cookie });
   assert.deepEqual((await afterDelete.json()).children, []);
 });
