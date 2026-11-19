@@ -20,6 +20,7 @@ export function ChildRegistry({
   initialPurokId,
   initialAgeFilter,
   children,
+  program = "deworming",
 }: {
   records: Child[];
   barangays: Barangay[];
@@ -31,6 +32,7 @@ export function ChildRegistry({
   initialPurokId: string;
   initialAgeFilter: string;
   children: ReactNode;
+  program?: "deworming" | "timbang";
 }) {
   const [query, setQuery] = useState(initialQuery);
   const [barangayId, setBarangayId] = useState(initialBarangayId);
@@ -71,7 +73,8 @@ export function ChildRegistry({
   if (barangayId) returnParams.set("barangay", barangayId);
   if (purokId) returnParams.set("purok", purokId);
   if (ageFilter) returnParams.set("age", ageFilter);
-  const returnTo = returnParams.size ? `/?${returnParams.toString()}` : "/";
+  const basePath = program === "timbang" ? "/operation-timbang" : "/";
+  const returnTo = returnParams.size ? `${basePath}?${returnParams.toString()}` : basePath;
 
   return <Dialog open={showNewRecord} onOpenChange={setShowNewRecord}>
     <div className="stats-grid" aria-label="Record totals">
@@ -81,7 +84,7 @@ export function ChildRegistry({
     </div>
     <div className="workspace-grid registry-workspace registry-workspace-online">
       <section className="panel record-panel">
-        <div className="section-heading"><div><p className="eyebrow">Your registry</p><h2>Child records <span className="registry-total-badge">{records.length}</span></h2></div><div className="registry-heading-actions"><ExportExcelDialog barangays={barangays} puroks={puroks} sitios={sitios} /><DialogTrigger asChild><button type="button" className="primary-button registry-add-record"><Plus aria-hidden="true" />Add child</button></DialogTrigger></div></div>
+        <div className="section-heading"><div><p className="eyebrow">Your registry</p><h2>{program === "timbang" ? "Operation Timbang records" : "Child records"} <span className="registry-total-badge">{records.length}</span></h2></div><div className="registry-heading-actions"><ExportExcelDialog barangays={barangays} puroks={puroks} sitios={sitios} program={program} /><DialogTrigger asChild><button type="button" className="primary-button registry-add-record"><Plus aria-hidden="true" />Add child</button></DialogTrigger></div></div>
         <ChildRecordFilters
           barangays={barangays}
           puroks={puroks}
@@ -95,10 +98,10 @@ export function ChildRegistry({
           onAgeFilterChange={setAgeFilter}
         />
         <span className="sr-only" role="status">{announcedCount} matching records</span>
-        {visibleRecords.length ? <ChildRecordsTable key={`${query}:${barangayId}:${purokId}:${ageFilter}`} records={visibleRecords} today={today} returnTo={returnTo} /> : <div className="empty-state"><SearchX aria-hidden="true" /><h3>{records.length ? "No matching records" : "Your registry starts here"}</h3><p>{query || barangayId || purokId || ageFilter ? "Try a different name or clear your search and filters." : "Add a child to start building your community’s health records."}</p><button className="secondary-button" type="button" onClick={() => { if (query || barangayId || purokId || ageFilter) { setQuery(""); setBarangayId(""); setPurokId(""); setAgeFilter(""); } else setShowNewRecord(true); }}>{query || barangayId || purokId || ageFilter ? "Clear search and filters" : "Add your first child"}</button></div>}
+        {visibleRecords.length ? <ChildRecordsTable key={`${query}:${barangayId}:${purokId}:${ageFilter}`} records={visibleRecords} today={today} returnTo={returnTo} program={program} /> : <div className="empty-state"><SearchX aria-hidden="true" /><h3>{records.length ? "No matching records" : "Your registry starts here"}</h3><p>{query || barangayId || purokId || ageFilter ? "Try a different name or clear your search and filters." : "Add a child to start building your community’s health records."}</p><button className="secondary-button" type="button" onClick={() => { if (query || barangayId || purokId || ageFilter) { setQuery(""); setBarangayId(""); setPurokId(""); setAgeFilter(""); } else setShowNewRecord(true); }}>{query || barangayId || purokId || ageFilter ? "Clear search and filters" : "Add your first child"}</button></div>}
         <p className="table-note">Age is calculated in full months as of {new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric", year: "numeric", timeZone: "Asia/Manila" }).format(new Date(`${today}T00:00:00+08:00`))}.</p>
       </section>
     </div>
-    <DialogContent className="new-record-dialog"><DialogHeader><p className="eyebrow">New registry entry</p><DialogTitle>Add a child</DialogTitle><DialogDescription>Enter the child’s details and assigned community. All fields are required.</DialogDescription></DialogHeader>{children}</DialogContent>
+    <DialogContent className="new-record-dialog"><DialogHeader><p className="eyebrow">New registry entry</p><DialogTitle>{program === "timbang" ? "Add Operation Timbang record" : "Add a child"}</DialogTitle><DialogDescription>{program === "timbang" ? "Enter the child’s details, community, and available body measurements." : "Enter the child’s details and assigned community. All fields are required."}</DialogDescription></DialogHeader>{children}</DialogContent>
   </Dialog>;
 }

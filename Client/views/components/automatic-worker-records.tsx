@@ -6,7 +6,9 @@ import { prepareWorker, changeWorkerContents, queueWorkerChild, queueWorkerDelet
 import { validChildDetails } from "@/Services/child-records";
 import { FeedbackDialog } from "@/Client/views/components/feedback-dialog";
 
-export function AutomaticWorkerRecords({ snapshot }: { snapshot: OfflineSnapshot }) {
+export function AutomaticWorkerRecords({ snapshot, program = "deworming" }: { snapshot: OfflineSnapshot; program?: "deworming" | "timbang" }) {
+  const returnTo = program === "timbang" ? "/operation-timbang" : "/";
+  const offlineUrl = program === "timbang" ? "/offline.html?program=timbang" : "/offline.html";
   const router = useRouter();
   const [notice, setNotice] = useState("");
   const [saved, setSaved] = useState("");
@@ -16,19 +18,19 @@ export function AutomaticWorkerRecords({ snapshot }: { snapshot: OfflineSnapshot
     let saving = false;
     let syncing = false;
     let unavailable = false;
-    const ready = prepareWorker(snapshot, () => !disposed);
+    const ready = prepareWorker(snapshot, () => !disposed, program);
     void ready.catch(() => { unavailable = true; });
     const readForm = (element: HTMLFormElement) => {
       const data = new FormData(element);
       const value = (key: string) => String(data.get(key) || "").trim();
-      return { id: value("id"), updatedAt: value("updatedAt"), child: { name: value("name"), birthday: value("birthday"), parents: value("parents"), sex: value("sex"), barangayId: value("barangayId"), purokId: value("purokId") } };
+      return { id: value("id"), updatedAt: value("updatedAt"), child: { name: value("name"), birthday: value("birthday"), parents: value("parents"), sex: value("sex"), barangayId: value("barangayId"), purokId: value("purokId"), ...(program === "timbang" ? { weight: value("weight"), height: value("height"), muac: value("muac") } : {}) } };
     };
     const sync = async () => {
       if (syncing || !navigator.onLine || disposed) return;
       syncing = true;
       try {
         await ready;
-        const contents = await syncWorkerChanges();
+        const contents = await syncWorkerChanges(program);
         if (!disposed) {
           setNotice(contents?.pending.length ? `${contents.pending.length} record changes are waiting for review.` : "");
           setSyncStatus(contents?.pending.length ? `${contents.pending.length} changes waiting to sync` : "Online · All changes synced");
@@ -44,9 +46,9 @@ export function AutomaticWorkerRecords({ snapshot }: { snapshot: OfflineSnapshot
         const element = document.querySelector<HTMLFormElement>("form[data-offline-draft-form]");
         if (element) {
           const draft = readForm(element);
-          if (Object.values(draft.child).some(Boolean)) await changeWorkerContents((contents) => { contents.draft = draft; });
+          if (Object.values(draft.child).some(Boolean)) await changeWorkerContents((contents) => { contents.draft = draft; }, program);
         }
-        if (!disposed) window.location.replace(`/offline.html${window.location.search}`);
+        if (!disposed) { const params = new URLSearchParams(window.location.search); if (program === "timbang") params.set("program", "timbang"); window.location.replace(`/offline.html${params.size ? `?${params}` : ""}`); }
       } catch {
         if (!disposed) setNotice("Offline storage is unavailable in this browser. Keep this form open until you reconnect.");
       }
@@ -68,19 +70,19 @@ export function AutomaticWorkerRecords({ snapshot }: { snapshot: OfflineSnapshot
       try {
         await ready;
         const offlineId = deleting ? String(new FormData(element).get("childId")) : draft.id || element.dataset.offlineId || crypto.randomUUID();
-        if (deleting) await queueWorkerDelete(offlineId, draft.updatedAt || undefined);
-        else await queueWorkerChild(draft.child as OfflineChildInput, offlineId, draft.updatedAt || undefined);
+        if (deleting) await queueWorkerDelete(offlineId, draft.updatedAt || undefined, program);
+        else await queueWorkerChild(draft.child as OfflineChildInput, offlineId, draft.updatedAt || undefined, program);
         element.dataset.offlineId = offlineId;
         savedLocally = true;
-        if (!navigator.onLine) { window.location.assign(new URL("/offline.html", window.location.origin).href); return; }
-        const contents = await syncWorkerChanges();
-        if (contents?.pending.length) { window.location.assign(new URL("/offline.html", window.location.origin).href); return; }
+        if (!navigator.onLine) { window.location.assign(new URL(offlineUrl, window.location.origin).href); return; }
+        const contents = await syncWorkerChanges(program);
+        if (contents?.pending.length) { window.location.assign(new URL(offlineUrl, window.location.origin).href); return; }
         setSaved(crypto.randomUUID());
         setNotice("");
-        if (draft.id) router.push("/");
+        if (draft.id) router.push(returnTo);
         else { delete element.dataset.offlineId; element.reset(); router.refresh(); }
       } catch (error) {
-        if (savedLocally) { window.location.assign(new URL("/offline.html", window.location.origin).href); return; }
+        if (savedLocally) { window.location.assign(new URL(offlineUrl, window.location.origin).href); return; }
         if (unavailable && navigator.onLine) {
           saving = false;
           if (button) button.disabled = false;
@@ -106,10 +108,10 @@ export function AutomaticWorkerRecords({ snapshot }: { snapshot: OfflineSnapshot
       window.removeEventListener("focus", sync);
       window.clearInterval(timer);
     };
-  }, [router, snapshot]);
+  }, [router, snapshot, program, returnTo, offlineUrl]);
   return <>
     <p className="worker-sync-status" role="status">{syncStatus}</p>
-    {notice && <p className="notice" role="status">{notice} <a href="/offline.html">Review saved changes</a></p>}
+    {notice && <p className="notice" role="status">{notice} <a href={offlineUrl}>Review saved changes</a></p>}
     {saved && <FeedbackDialog message="Record changes saved and synced." isError={false} feedbackId={saved} />}
   </>;
 }
