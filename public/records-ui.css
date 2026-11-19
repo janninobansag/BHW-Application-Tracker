@@ -239,6 +239,7 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .auth-gallery-photo{object-fit:cover;opacity:0;z-index:0;transition:none;will-change:opacity}
 .auth-gallery-photo.is-previous{opacity:1;z-index:1}
 .auth-gallery-photo.is-active{opacity:1;z-index:2;transition:opacity 1400ms ease-in-out}
+@media(prefers-reduced-motion:reduce){.auth-gallery-photo.is-active{transition:opacity 1800ms ease-in-out!important}}
 .auth-gallery>.auth-gallery-images{z-index:-2}
 .auth-gallery>.auth-gallery-shade{z-index:-1}
 .auth-gallery>.auth-gallery-shade{background:linear-gradient(180deg,rgba(6,23,21,.08) 20%,rgba(6,23,21,.42) 50%,rgba(6,23,21,.9) 100%)}
@@ -386,7 +387,6 @@ button:disabled{cursor:not-allowed;opacity:.55}
 @media(max-width:760px){.worker-actions .account-status-button{min-height:46px}}
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}
-  .auth-gallery-photo.is-active{transition-property:opacity;transition-duration:1400ms!important;transition-timing-function:ease-in-out}
 }
 .registry-export-button svg{width:17px;height:17px;flex:none}
 .registry-heading-actions{display:flex;align-items:center;gap:10px;flex:none}
