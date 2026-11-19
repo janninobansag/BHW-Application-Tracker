@@ -97,14 +97,21 @@ input::placeholder { color: #697c71; opacity: 1; }
 .registry-heading-actions .registry-export-button, .registry-add-record { display: inline-flex; min-height: 44px; gap: 8px; padding: 10px 14px; font-size: .78rem; }
 .registry-heading-actions .registry-export-button { background: #fff; color: #315f49; border: 1px solid #b8c9ba; box-shadow: none; }
 .registry-heading-actions svg { width: 17px; height: 17px; }
-.registry-filters { display: grid; grid-template-columns: minmax(180px, 1.5fr) minmax(150px, 1fr) minmax(150px, 1fr); gap: 14px; margin: 0; padding: 22px 26px 18px; border: 0; background: transparent; }
+.registry-search { display: block; min-width: 0; }
+.registry-filters { display: grid; grid-template-columns: minmax(220px, 1.5fr) repeat(2, minmax(170px, 1fr)); gap: 16px; margin: 0; padding: 20px 26px 18px; border: 0; border-bottom: 1px solid #e3eae4; background: #f8faf8; }
 .registry-filters .field label { font-size: .74rem; }
 .registry-filters input, .registry-filters select { font-size: .84rem; min-height: 44px; border-color: #b5c2b7; }
 .registry-search-input { position: relative; }
 .registry-search-input svg { color: #5d7563; }
 .registry-filters .registry-search-input input { padding-left: 38px; }
-.registry-active-filters { grid-column: 1/-1; padding-top: 2px; color: #43614d; }
-.registry-active-filters button { min-height: 32px; color: #185c4c; font-weight: 650; text-decoration: underline; text-underline-offset: 3px; }
+.registry-age-filter { display: grid; grid-column: 1/-1; grid-template-columns: max-content minmax(0,1fr); align-items: center; gap: 16px; min-width: 0; margin: 0; padding: 14px 0 0; border: 0; border-top: 1px solid #e3eae4; }
+.registry-age-filter legend { padding: 0; color: #355148; font-size: .76rem; font-weight: 650; }
+.registry-age-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.registry-age-options label { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 12px; border: 1px solid #cbd7ce; border-radius: 5px; background: #fff; color: #42594d; font-size: .78rem; font-weight: 550; cursor: pointer; white-space: nowrap; transition: background-color .15s ease, border-color .15s ease, color .15s ease; }
+.registry-age-options label:hover { border-color: #8eae99; background: #f4f8f4; }
+.registry-age-options label:has(input:checked) { border-color: #4a8167; background: #eaf3ed; color: #20553d; box-shadow: inset 0 0 0 1px #4a8167; }
+.registry-age-options label:has(input:focus-visible) { outline: 3px solid #957020; outline-offset: 3px; }
+.registry-age-options input { width: 17px; height: 17px; min-width: 17px; min-height: 17px; margin: 0; padding: 0; border: 0; accent-color: #185c4c; flex: none; }
 .registry-result-count { margin: 0; padding: 0 26px 16px; color: #5e7365; font-size: .74rem; }
 .record-panel > .empty-state { margin: 0 26px 24px; }
 .registry-table { container: registry / inline-size; max-width: 100%; overflow: auto; margin: 0; border: 0; padding: 0; }
@@ -222,6 +229,10 @@ input::placeholder { color: #697c71; opacity: 1; }
 .location-fieldset { border-color: #ced9c8; background: #fafbf7; border-radius: 4px; }
 .location-fieldset > legend { color: #355b3a; font-size: .79rem; }
 .location-fieldset .field-hint { color: #5e735c; }
+.export-age-option { display: grid; gap: 5px; padding: 12px 14px; border: 1px solid #d6e1d7; border-radius: 5px; background: #f8faf8; }
+.export-age-option label { display: flex; align-items: center; gap: 10px; min-height: 44px; color: #355148; font-size: .82rem; font-weight: 650; cursor: pointer; }
+.export-age-option input { width: 18px; height: 18px; min-width: 18px; min-height: 18px; margin: 0; accent-color: #185c4c; flex: none; }
+.export-age-option .field-hint { margin: 0 0 0 28px; font-size: .74rem; line-height: 1.5; }
 [data-slot="dialog-content"], [data-slot="alert-dialog-content"] { border-color: #cbd5c4; border-radius: 6px; max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain; padding: 28px; box-shadow: 0 24px 72px #173a3329; }
 [data-slot="dialog-header"] { text-align: left; padding-right: 24px; }
 [data-slot="dialog-title"], [data-slot="alert-dialog-title"] { color: #284b33; font-size: 1.35rem; line-height: 1.3; letter-spacing: -.025em; }
@@ -335,7 +346,7 @@ input::placeholder { color: #697c71; opacity: 1; }
   .signed-in { display: none; }
   .stats-grid .stat { padding: 18px; column-gap: 10px; }
   .stat > strong { font-size: 1.8rem; }
-  .registry-filters { grid-template-columns: 1fr 1fr; }
+  .registry-filters { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .registry-filters > .registry-search-field { grid-column: 1/-1; }
   .admin-grid { grid-template-columns: minmax(0, 1fr); }
   .admin-side { display: grid; grid-template-columns: 1fr 1fr; align-items: start; grid-row: 1; }
@@ -371,12 +382,17 @@ input::placeholder { color: #697c71; opacity: 1; }
   .registry-heading-actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .registry-heading-actions .registry-export-button, .registry-add-record { width: 100%; min-height: 46px; font-size: .78rem; justify-content: center; padding: 10px; }
   .registry-heading-actions .registry-export-button { min-height: 46px; font-size: .78rem; }
-  .registry-filters { grid-template-columns: minmax(0, 1fr) auto; gap: 12px 8px; padding: 18px 16px 12px; margin: 0; }
+  .registry-filters { grid-template-columns: minmax(0, 1fr) auto; gap: 12px 8px; padding: 16px; margin: 0; background: #f8faf8; }
   .registry-filters > .registry-search-field:first-child { grid-column: auto; }
   .registry-search-field > label { position: static; width: auto; height: auto; clip-path: none; overflow: visible; font-size: .72rem; }
   .registry-filter-toggle { min-height: 48px; padding: 12px; border-color: #b5c6b2; color: #40613e; font-size: .77rem; background: #f4f7ef; }
   .registry-filters .registry-search-input input, .registry-filter-locations select { font-size: 16px; min-height: 48px; }
-  .registry-filter-locations { background: #f6f8f0; border-color: #dbe3d0; padding: 14px; }
+  .registry-filter-locations { background: #fff; border-color: #dbe3d0; padding: 14px; }
+  .registry-age-filter { grid-template-columns: minmax(0,1fr); gap: 8px; padding-top: 12px; }
+  .registry-age-filter legend { font-size: .76rem; }
+  .registry-age-options { display: grid; grid-template-columns: minmax(0,1fr); gap: 7px; }
+  .registry-age-options label { min-height: 48px; padding: 10px 12px; font-size: .82rem; }
+  .registry-age-options input { width: 18px; height: 18px; min-width: 18px; min-height: 18px; }
   .registry-result-count { padding: 0 16px 14px; font-size: .72rem; }
   .record-panel > .empty-state { margin: 0 16px 18px; padding: 32px 16px; }
   .records-pagination { display: flex; flex-direction: column; align-items: stretch; gap: 14px; padding: 18px 16px; font-size: .73rem; }
@@ -414,6 +430,8 @@ input::placeholder { color: #697c71; opacity: 1; }
   [data-slot="dialog-content"], [data-slot="alert-dialog-content"] { width: calc(100vw - 24px); max-width: 600px; max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); padding: 24px 18px; border-radius: 5px; gap: 22px; }
   [data-slot="dialog-content"] > button[data-slot="dialog-close"] { width: 44px; height: 44px; top: 5px; right: 5px; }
   [data-slot="dialog-title"] { font-size: 1.25rem; }
+  .export-age-option { padding: 12px; }
+  .export-age-option label { min-height: 48px; font-size: .8rem; }
   .new-record-dialog .form-stack, .new-record-dialog .location-fieldset { grid-template-columns: 1fr; gap: 20px; }
   .new-record-dialog .form-stack input, .new-record-dialog .form-stack select { min-height: 48px; font-size: 16px; }
   .record-edit-form-panel, .record-summary { padding: 22px 18px; }
@@ -453,7 +471,7 @@ input::placeholder { color: #697c71; opacity: 1; }
   .simple-page { padding: 24px 12px; }
 }
 @media (pointer: coarse) {
-  :where(.record-menu-trigger, .secondary-button, .primary-button, .text-button, .password-visibility-toggle, .registry-active-filters button, .coverage-type-switch button) { min-width: 44px; min-height: 44px; }
+  :where(.record-menu-trigger, .secondary-button, .primary-button, .text-button, .password-visibility-toggle, .coverage-type-switch button) { min-width: 44px; min-height: 44px; }
   .side-nav a, .checkbox-list label { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {

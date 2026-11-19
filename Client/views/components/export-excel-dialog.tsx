@@ -38,6 +38,10 @@ export function ExportExcelDialog({ barangays, puroks, sitios }: { barangays: Ba
           <option value="" disabled>{!barangayId ? "Select a Barangay first" : availableSitios.length ? "Select a Sitio" : "No Sitios available"}</option>
           {availableSitios.map((sitio) => <option key={sitio.id} value={sitio.id}>{sitio.name}</option>)}
         </select><small className="field-hint">{barangayId && !availableSitios.length ? "An administrator needs to add a Sitio to this Barangay before export." : "The Sitio labels the report; the Purok determines which records are included."}</small></label></fieldset>
+        <div className="export-age-option">
+          <label htmlFor="exclude-age-extremes"><input id="exclude-age-extremes" type="checkbox" name="excludeAgeExtremes" value="true" /><span>Exclude children under 5 months and over 60 months</span></label>
+          <p className="field-hint">When selected, the download includes children aged 5 through 60 full months.</p>
+        </div>
         {barangayId && purokId && <div className="location-context"><span>Selected coverage</span><strong>{barangays.find((item) => item.id === barangayId)?.name} / {availablePuroks.find((item) => item.id === purokId)?.name}</strong>{sitioId && <small>Sitio {availableSitios.find((item) => item.id === sitioId)?.name}</small>}</div>}
         <div className="export-dialog-actions"><DialogClose asChild><button className="secondary-button" type="button">Cancel</button></DialogClose><button className="primary-button" type="submit" disabled={!barangayId || !purokId || !sitioId}>Download Excel</button></div>
       </form>

@@ -542,7 +542,15 @@ router.get("/api/export/xlsx", async (req, res, next) => {
     query.purok_id = requestedPurok;
     const q = String(req.query.q ?? "").trim().slice(0, 80);
     if (q) query.$or = [{ name: { $regex: escapeRegExp(q), $options: "i" } }, { parents: { $regex: escapeRegExp(q), $options: "i" } }];
-    const children = await db.collection<Child>("children").find(query).sort({ name: 1, birthday: 1 }).toArray();
+    const today = todayInManila();
+    const excludeAgeExtremes = String(req.query.excludeAgeExtremes ?? "") === "true";
+    const matchedChildren = await db.collection<Child>("children").find(query).sort({ name: 1, birthday: 1 }).toArray();
+    const children = excludeAgeExtremes
+      ? matchedChildren.filter((child) => {
+        const months = ageInMonths(child.birthday, today);
+        return months >= 5 && months <= 60;
+      })
+      : matchedChildren;
     const [barangay, puroks, assignedWorkers] = await Promise.all([
       db.collection<Barangay>("barangays").findOne({ id: requestedBarangay }),
       db.collection<Purok>("puroks").find({ id: { $in: [...new Set(children.map((c) => c.purok_id))] } }).toArray(),
@@ -552,7 +560,7 @@ router.get("/api/export/xlsx", async (req, res, next) => {
     const purok = await db.collection<Purok>("puroks").findOne({ id: requestedPurok, barangay_id: requestedBarangay });
     const workers = await db.collection<User>("users").find({ id: { $in: assignedWorkers.map((item) => String(item.user_id)) }, role: "bhw", is_active: 1 }).toArray();
     const bhwName = workers.map((worker) => worker.display_name).join(", ") || (user.role === "bhw" ? user.display_name : "Unassigned");
-    const rows = children.map((child, index) => [`${index + 1}.`, child.name, excelDateSerial(child.birthday), purokName.get(child.purok_id) ?? "", ageInMonths(child.birthday, todayInManila()), child.sex, "", "", "", "", child.parents]);
+    const rows = children.map((child, index) => [`${index + 1}.`, child.name, excelDateSerial(child.birthday), purokName.get(child.purok_id) ?? "", ageInMonths(child.birthday, today), child.sex, "", "", "", "", child.parents]);
     const file = Buffer.from(makeWorkbook({ barangay: barangay?.name ?? "", sitio: sitio.name, purok: purok?.name ?? "", bhw: bhwName }, rows));
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="vitamin-a-deworming-${todayInManila()}.xlsx"`);

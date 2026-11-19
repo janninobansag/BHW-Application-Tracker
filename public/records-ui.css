@@ -400,9 +400,6 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .registry-search-input{position:relative;min-width:0}
 .registry-search-input>svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:17px;height:17px;color:#7c8b83;pointer-events:none}
 .registry-search-input input{padding-left:38px}
-.registry-active-filters{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:.76rem;color:#657b70}
-.registry-active-filters span{min-width:0;overflow-wrap:anywhere}
-.registry-active-filters button{border:0;background:transparent;padding:8px 0;min-height:36px;color:#246d55;font-size:.74rem;font-weight:650;flex:none}
 .registry-result-count{font-size:.75rem;color:#76887c;margin:0 0 12px}
 .record-edit-back{display:inline-flex;align-items:center;gap:7px;margin:0 0 18px;color:#6b8172;font-size:.77rem;font-weight:600;min-height:32px}
 .record-edit-back svg{width:16px;height:16px}
@@ -604,7 +601,6 @@ button:disabled{cursor:not-allowed;opacity:.55}
   .filters-expanded .registry-filter-locations{display:grid;grid-template-columns:minmax(0,1fr)}
   .registry-filter-locations .field label{font-size:.76rem}
   .registry-filter-locations select{font-size:16px;min-height:46px}
-  .registry-active-filters{font-size:.73rem}
   .registry-result-count{margin:0 0 14px;font-size:.73rem}
   .registry-table tbody{display:grid;gap:12px}
   .registry-table tr{grid-template-columns:minmax(0,1fr) auto;gap:10px 14px;padding:16px 14px 0;border:1px solid #dfe8e1;border-radius:5px;background:#fff}
