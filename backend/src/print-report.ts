@@ -2,13 +2,13 @@ import { readFile } from "node:fs/promises";
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, PrintScaling, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { REPORT_COLUMN_WIDTHS } from "./workbook.js";
+import { TIMBANG_COLUMN_WIDTHS, TIMBANG_HEADERS, type ReportHeading, type ReportProgram } from "./report-layout.js";
 
-type Heading = { barangay: string; sitio: string; purok: string; bhw: string };
+type Heading = ReportHeading;
 type ReportRow = Array<string | number>;
 
 // Long bond paper, landscape. Dimensions and margins are in PDF points (72/in).
 export const REPORT_PAGE = { width: 936, height: 612, margin: 18 };
-const columnWeights = REPORT_COLUMN_WIDTHS;
 const fontSize = 8.5;
 const lineHeight = 10;
 let fonts: Promise<Buffer[]> | undefined;
@@ -38,9 +38,13 @@ function birthdayText(value: string | number): string {
   return `${month}/${day}/${year}`;
 }
 
-export async function makePrintReport(heading: Heading, records: ReportRow[]): Promise<Uint8Array> {
+export async function makePrintReport(heading: Heading, records: ReportRow[], program: ReportProgram = "deworming"): Promise<Uint8Array> {
+  const timbang = program === "timbang";
+  const columnWeights = timbang ? TIMBANG_COLUMN_WIDTHS : REPORT_COLUMN_WIDTHS;
+  const title = timbang ? `OPERATION TIMBANG ${heading.year ?? new Date().getFullYear()}` : "VITAMIN A AND DEWORMING";
+  const totalColumn = columnWeights.length - 1;
   const document = await PDFDocument.create();
-  document.setTitle("Vitamin A and Deworming");
+  document.setTitle(timbang ? "Operation Timbang" : "Vitamin A and Deworming");
   document.registerFontkit(fontkit);
   document.catalog.getOrCreateViewerPreferences().setPrintScaling(PrintScaling.None);
   const [regularBytes, boldBytes] = await fontBytes();
@@ -56,7 +60,7 @@ export async function makePrintReport(heading: Heading, records: ReportRow[]): P
     `Barangay: ${heading.barangay}`,
     `Sitio/Purok: ${heading.sitio} / ${heading.purok}`,
     `BHW: ${heading.bhw}`,
-  ].map((value) => wrap(value, bold, edges[9] - margin - 8));
+  ].map((value) => wrap(value, bold, edges[totalColumn - 1] - margin - 8));
   const metadataHeights = metadata.map((lines) => Math.max(17, lines.length * lineHeight + 5));
   const headerY = height - margin - 30 - metadataHeights.reduce((sum, value) => sum + value, 0);
   const headerHeight = 36;
@@ -64,7 +68,7 @@ export async function makePrintReport(heading: Heading, records: ReportRow[]): P
   const bodyBottom = margin + 12;
   const bodyHeight = bodyTop - bodyBottom;
   const prepared = records.map((row) => {
-    const cells = Array.from({ length: 11 }, (_, column) => wrap(column === 2 ? birthdayText(row[column]) : String(row[column] ?? ""), regular, widths[column] - 8));
+    const cells = Array.from({ length: widths.length }, (_, column) => wrap(column === 2 ? birthdayText(row[column]) : String(row[column] ?? ""), regular, widths[column] - 8));
     return { cells, height: Math.max(20, Math.max(...cells.map((lines) => lines.length)) * lineHeight + 8) };
   });
   const pages: Array<typeof prepared> = [[]];
@@ -87,22 +91,26 @@ export async function makePrintReport(heading: Heading, records: ReportRow[]): P
 
   pages.forEach((rows, pageIndex) => {
     const page = document.addPage([width, height]);
-    centered(page, "VITAMIN A AND DEWORMING", margin, width - margin, height - margin - 16, 15);
-    const male = records.filter((row) => row[5] === "M").length;
-    const female = records.filter((row) => row[5] === "F").length;
+    centered(page, title, margin, width - margin, height - margin - 16, 15);
+    const male = records.filter((row) => row[timbang ? 9 : 5] === "M").length;
+    const female = records.filter((row) => row[timbang ? 9 : 5] === "F").length;
     const totals: Array<[string, number]> = [["Male:", male], ["Female:", female], ["Total:", records.length]];
     let metadataY = height - margin - 34;
     metadata.forEach((lines, index) => {
       lines.forEach((value, lineIndex) => text(page, value, margin, metadataY - lineIndex * lineHeight, fontSize, bold));
       const [label, count] = totals[index];
-      text(page, label, edges[10] - bold.widthOfTextAtSize(label, fontSize) - 3, metadataY, fontSize, bold);
-      centered(page, String(count), edges[10], edges[11], metadataY, fontSize, bold);
+      text(page, label, edges[totalColumn] - bold.widthOfTextAtSize(label, fontSize) - 3, metadataY, fontSize, bold);
+      centered(page, String(count), edges[totalColumn], edges[totalColumn + 1], metadataY, fontSize, bold);
       metadataY -= metadataHeights[index];
     });
 
     // Match the Excel export's unfilled, two-level merged table heading.
     line(page, margin, headerY, width - margin, headerY);
     line(page, margin, bodyTop, width - margin, bodyTop);
+    if (timbang) {
+      edges.forEach((edge) => line(page, edge, headerY, edge, bodyTop));
+      TIMBANG_HEADERS.forEach((value, column) => centered(page, value, edges[column], edges[column + 1], headerY - 21, 8));
+    } else {
     for (const column of [0, 1, 2, 3, 4, 5, 6, 8, 10, 11]) line(page, edges[column], headerY, edges[column], bodyTop);
     line(page, edges[5], headerY - 18, edges[10], headerY - 18);
     for (const column of [7, 9]) line(page, edges[column], headerY - 18, edges[column], bodyTop);
@@ -113,6 +121,7 @@ export async function makePrintReport(heading: Heading, records: ReportRow[]): P
     centered(page, "Vitamin A", edges[6], edges[8], headerY - 12, 8);
     centered(page, "Deworming", edges[8], edges[10], headerY - 12, 8);
     ["1ST DOSE", "2ND DOSE", "1ST DOSE", "2ND DOSE"].forEach((value, index) => centered(page, value, edges[index + 6], edges[index + 7], headerY - 30, 7.5));
+    }
 
     // Fill unused space with ruled rows, rather than stretching text or leaving
     // a large blank area. Extra records continue onto another full-width page.
@@ -120,7 +129,7 @@ export async function makePrintReport(heading: Heading, records: ReportRow[]): P
     for (const row of rows) {
       row.cells.forEach((values, column) => values.forEach((value, index) => {
         const baseline = y - (row.height - values.length * lineHeight) / 2 - 8 - index * lineHeight;
-        if ([0, 4, 5].includes(column)) centered(page, value, edges[column], edges[column + 1], baseline, fontSize, regular);
+        if ((timbang ? [0, 4, 5, 6, 7] : [0, 4, 5]).includes(column)) centered(page, value, edges[column], edges[column + 1], baseline, fontSize, regular);
         else text(page, value, edges[column] + 4, baseline);
       }));
       y -= row.height;

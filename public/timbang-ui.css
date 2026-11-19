@@ -1,0 +1,42 @@
+/* Keep the measurement register readable without widening the page. */
+.timbang-table { container: timbang / inline-size; }
+.timbang-table table { min-width: 1080px; table-layout: auto; }
+.timbang-table thead th { width: auto !important; white-space: nowrap; padding: 14px 12px; }
+.timbang-table tbody :is(td, th) { padding: 18px 12px; }
+.timbang-table .record-child { min-width: 190px; }
+.timbang-table .record-parents, .timbang-table .record-location { min-width: 150px; }
+.timbang-table :is(.timbang-number, .timbang-value) { text-align: center; font-variant-numeric: tabular-nums; }
+.timbang-value .muted { font-size: .72rem; }
+.timbang-measurements { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.timbang-measurements > .field-hint { grid-column: 1 / -1; margin: 0; }
+.new-record-dialog .timbang-measurements { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.timbang-measurements input { min-width: 0; width: 100%; }
+@container timbang (width < 1000px) {
+  .timbang-table table, .timbang-table tbody { display: block; width: 100%; min-width: 0; }
+  .timbang-table thead { display: none; }
+  .timbang-table tbody { padding: 0 16px; }
+  .timbang-table tr { position: relative; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; padding: 18px 0 0; border-top: 1px solid #dce3d6; background: #fff; }
+  .timbang-table tbody :is(td, th) { display: block; min-width: 0; padding: 0; border: 0; background: transparent; }
+  .timbang-table tbody .record-child { grid-column: 1 / -1; padding-right: 44px; }
+  .timbang-table .timbang-number { display: none; }
+  .timbang-table .record-age { grid-column: 1 / 4; }
+  .timbang-table .record-sex { grid-column: 4 / -1; text-align: left; }
+  .timbang-table .timbang-value { grid-column: span 2; padding: 12px 8px; background: #f6f8f3; border: 1px solid #e3e8dc; border-radius: 3px; font-size: .95rem; text-align: left; }
+  .timbang-table td.timbang-value::before { content: attr(data-label); display: block; margin-bottom: 7px; color: #526953; font-size: .7rem; font-weight: 600; }
+  .timbang-table .record-parents, .timbang-table .record-desktop-location { display: none; }
+  .timbang-table .record-location { grid-column: 1 / -1; margin: 0; border-top: 1px solid #edf0e8; }
+  .timbang-table td.record-location::before { display: none; }
+  .timbang-table .record-actions-cell { position: absolute; top: 12px; right: -6px; width: 44px; padding: 0; }
+  .timbang-table .record-menu-trigger { width: 44px; height: 44px; }
+  .timbang-table .record-mobile-disclosure { display: block; }
+  .timbang-table .record-mobile-disclosure summary { display: flex; align-items: center; justify-content: space-between; min-height: 44px; list-style: none; cursor: pointer; color: #45664c; font-size: .76rem; font-weight: 600; }
+  .timbang-table .record-mobile-disclosure summary::after { content: "+"; }
+  .timbang-table .record-mobile-disclosure[open] summary::after { content: "-"; }
+  .timbang-table .record-mobile-disclosure dl { display: grid; gap: 14px; margin: 0; padding: 4px 0 18px; }
+  .timbang-table .record-mobile-disclosure dt { font-size: .7rem; color: #62745f; }
+  .timbang-table .record-mobile-disclosure dd { margin: 4px 0 0; font-size: .82rem; }
+}
+@media (max-width: 480px) {
+  .timbang-measurements, .new-record-dialog .timbang-measurements { grid-template-columns: 1fr; }
+  .timbang-measurements input { min-height: 48px; font-size: 1rem; }
+}

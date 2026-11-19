@@ -4,6 +4,41 @@ import { strFromU8, unzipSync } from "fflate";
 import { makeWorkbook } from "../src/workbook.ts";
 import { makePrintReport } from "../src/print-report.ts";
 import { PDFDocument, PrintScaling } from "pdf-lib";
+import { parseMeasurements } from "../src/timbang.ts";
+
+test("Operation Timbang validates decimals and preserves unmeasured fields", () => {
+  assert.deepEqual(parseMeasurements({ weight: "12.25", height: 81, muac: "16.5" }), { weight: 12.25, height: 81, muac: 16.5 });
+  assert.deepEqual(parseMeasurements({ weight: "", height: null }), { weight: null, height: null, muac: null });
+  for (const value of [0, -2, "12kg", "1e2", "12.345", " ", [], {}, Infinity, 1001]) assert.equal(parseMeasurements({ weight: value }), null);
+});
+
+test("Operation Timbang workbook has nine printable columns, numeric measurements, dates, and working totals", async () => {
+  const heading = { barangay: "Tulay", sitio: "Springwoods", purok: "Tipay", bhw: "Test worker", year: "2026" };
+  const records = [["1.", "Measured child", 45599, "Tipay", 24, 12.25, 81, 16.5, "Test guardian", "M"], ["2.", "Awaiting measurement", 45599, "Tipay", 24, "", "", "", "Other guardian", "F"]];
+  const files = unzipSync(makeWorkbook(heading, records, "timbang"));
+  const sheet = strFromU8(files["xl/worksheets/sheet1.xml"]);
+  const book = strFromU8(files["xl/workbook.xml"]);
+  assert.match(sheet, /OPERATION TIMBANG 2026/);
+  assert.doesNotMatch(sheet, /Vitamin A|Deworming|1ST DOSE|2ND DOSE/);
+  for (const label of ["WEIGHT (kg)", "HEIGHT (cm)", "MUAC (cm)", "GUARDIAN"]) assert.ok(sheet.includes(label));
+  assert.match(sheet, /<c r="F7" s="6"><v>12.25<\/v>/);
+  assert.match(sheet, /<c r="G7" s="6"><v>81<\/v>/);
+  assert.match(sheet, /<c r="H7" s="6"><v>16.5<\/v>/);
+  assert.match(sheet, /<c r="C7" s="5"><v>45599<\/v>/);
+  assert.match(sheet, /<f>COUNTIF\(J7:J8,&quot;M&quot;\)<\/f><v>1<\/v>/);
+  assert.match(sheet, /<f>COUNTIF\(J7:J8,&quot;F&quot;\)<\/f><v>1<\/v>/);
+  assert.match(sheet, /<f>COUNTA\(B7:B8\)<\/f><v>2<\/v>/);
+  assert.match(sheet, /min="10" max="10" width="5" hidden="1"/);
+  assert.ok(book.includes("&apos;Operation Timbang&apos;!$A$1:$I$8"));
+  assert.match(sheet, /paperSize="14" orientation="landscape"/);
+  assert.match(strFromU8(files["xl/styles.xml"]), /formatCode="mm&quot;\/&quot;dd&quot;\/&quot;yyyy"/);
+  const pdf = await PDFDocument.load(await makePrintReport(heading, records, "timbang"));
+  assert.equal(pdf.getTitle(), "Operation Timbang");
+  assert.equal(pdf.getPageCount(), 1);
+  assert.deepEqual(pdf.getPage(0).getSize(), { width: 936, height: 612 });
+  const multiple = await PDFDocument.load(await makePrintReport(heading, Array.from({ length: 100 }, () => records[0]), "timbang"));
+  assert.ok(multiple.getPageCount() > 1);
+});
 
 test("formatted workbook includes the requested headings, layout, and totals", () => {
   const workbook = makeWorkbook(
