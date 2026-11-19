@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getDb } from "./db.js";
 import { cleanUsername, cookieValue, createSessionToken, hashPassword, hashSessionToken, sessionCookieName, validPassword, verifyPassword } from "./security.js";
 import { makeWorkbook } from "./workbook.js";
+import { makePrintReport } from "./print-report.js";
 
 type User = { id: string; username: string; display_name: string; role: "admin" | "bhw"; password_hash?: string | null; is_active: number; must_change_password: number; created_at?: string; updated_at?: string };
 type UserPublic = Omit<User, "password_hash">;
@@ -526,6 +527,8 @@ router.put("/api/admin/users/:id/active", requireAdmin, async (req, res, next) =
 
 router.get("/api/export/xlsx", async (req, res, next) => {
   try {
+    const format = req.query.format ?? "xlsx";
+    if (format !== "xlsx" && format !== "pdf") return message(res, 400, "Choose Excel or PDF format.");
     const user = res.locals.user as User;
     if (user.must_change_password) return message(res, 403, "Change your password before exporting.");
     const db = await getDb();
@@ -553,9 +556,10 @@ router.get("/api/export/xlsx", async (req, res, next) => {
     const workers = await db.collection<User>("users").find({ id: { $in: assignedWorkers.map((item) => String(item.user_id)) }, role: "bhw", is_active: 1 }).toArray();
     const bhwName = workers.map((worker) => worker.display_name).join(", ") || (user.role === "bhw" ? user.display_name : "Unassigned");
     const rows = children.map((child, index) => [`${index + 1}.`, child.name, excelDateSerial(child.birthday), purokName.get(child.purok_id) ?? "", ageInMonths(child.birthday, todayInManila()), child.sex, "", "", "", "", child.parents]);
-    const file = Buffer.from(makeWorkbook({ barangay: barangay?.name ?? "", sitio: sitio.name, purok: purok?.name ?? "", bhw: bhwName }, rows));
-    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    res.setHeader("Content-Disposition", `attachment; filename="vitamin-a-deworming-${todayInManila()}.xlsx"`);
+    const heading = { barangay: barangay?.name ?? "", sitio: sitio.name, purok: purok?.name ?? "", bhw: bhwName };
+    const file = Buffer.from(format === "pdf" ? await makePrintReport(heading, rows) : makeWorkbook(heading, rows));
+    res.setHeader("Content-Type", format === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="vitamin-a-deworming-${todayInManila()}.${format}"`);
     res.setHeader("Content-Length", String(file.length));
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "private, no-store");

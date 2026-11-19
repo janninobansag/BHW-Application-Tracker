@@ -156,6 +156,12 @@ test("authenticated worker CRUD, assignment access, and filtered Excel export", 
   assert.match(sheet, /<f>COUNTIF\(F7:F7,&quot;F&quot;\)<\/f><v>1<\/v>/);
   assert.match(sheet, /<f>COUNTA\(B7:B7\)<\/f><v>1<\/v>/);
 
+  const printResponse = await request(`/api/export/xlsx?format=pdf&barangay=${encodeURIComponent(barangay.id)}&purok=${encodeURIComponent(purok.id)}&sitio=${encodeURIComponent(sitio.id)}`, { cookie: admin.cookie });
+  assert.equal(printResponse.status, 200);
+  assert.match(printResponse.headers.get("content-type") ?? "", /application\/pdf/);
+  assert.match(printResponse.headers.get("content-disposition") ?? "", /\.pdf/);
+  assert.equal(Buffer.from(await printResponse.arrayBuffer()).subarray(0, 5).toString(), "%PDF-");
+
   const staleOfflineDelete = await request(`/api/children/${encodeURIComponent(created.id)}`, {
     method: "DELETE", cookie: workerLogin.cookie,
     body: { updatedAt: "older-offline-version", offlineUserId: worker.id },
