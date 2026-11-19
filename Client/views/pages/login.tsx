@@ -17,9 +17,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   return <main className="auth-page login-page"><div className="auth-panel">
     <OfflineSession role="signed-out" />
     {feedbackId && <FeedbackDialog message={message} isError={feedbackError === "1"} feedbackId={feedbackId} />}
-    <div className="auth-brand"><BrandIcon className="brand-mark" /><span><strong>BHW Records</strong><small>Barangay health desk</small></span></div>
-    <p className="eyebrow">Staff access</p><h1>Welcome back</h1>
-    <p className="muted">Sign in to manage child records for your assigned barangay.</p>
+    <div className="auth-brand"><BrandIcon className="brand-mark" /><span><strong>BHW Records</strong><small>Minglanilla, Cebu</small></span></div>
+    <p className="eyebrow">Barangay health registry</p><h1>Your community.<br />Your workspace.</h1>
+    <p className="muted">Sign in to care for your community’s child health records.</p>
     {message && !feedbackId && <p className="notice" role="status">{message}</p>}
     <form action={login} className="form-stack">
       <div className="field"><label htmlFor="username">Username</label><input id="username" name="username" autoComplete="username" required /></div>
@@ -27,5 +27,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       <button className="primary-button" type="submit">Sign in</button>
     </form>
     <p className="auth-footnote">Need an account or a password reset? Contact your administrator.</p>
+    <div className="auth-locality"><span>Minglanilla, Cebu</span><span>For authorized health staff</span></div>
   </div><LoginGallery /></main>;
 }
