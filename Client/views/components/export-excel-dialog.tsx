@@ -13,17 +13,21 @@ export function ExportExcelDialog({ barangays, puroks, sitios }: { barangays: Ba
   const [barangayId, setBarangayId] = useState("");
   const [sitioId, setSitioId] = useState("");
   const [purokId, setPurokId] = useState("");
+  const [format, setFormat] = useState("xlsx");
   const availableSitios = sitios.filter((sitio) => sitio.barangay_id === barangayId);
   const availablePuroks = puroks.filter((purok) => purok.barangay_id === barangayId);
 
   return <Dialog open={open} onOpenChange={setOpen}>
-    <button type="button" className="primary-button registry-export-button" onClick={() => setOpen(true)} aria-label="Download formatted Excel"><Download aria-hidden="true" /><span className="export-label-desktop">Download formatted Excel</span><span className="export-label-mobile">Export Excel</span></button>
+    <button type="button" className="primary-button registry-export-button" onClick={() => setOpen(true)} aria-label="Download child report"><Download aria-hidden="true" /><span className="export-label-desktop">Download report</span><span className="export-label-mobile">Export report</span></button>
     <DialogContent className="export-dialog" showCloseButton>
       <DialogHeader>
         <DialogTitle>Download child records</DialogTitle>
         <DialogDescription>Choose which records to download, then select the Sitio shown in the report heading.</DialogDescription>
       </DialogHeader>
-      <form className="export-dialog-form" action="/api/export/xlsx" method="get">
+      <form className="export-dialog-form" action={format === "pdf" ? "/api/export/pdf" : "/api/export/xlsx"} method="get">
+        <label className="field"><span>File format</span><select value={format} onChange={(event) => setFormat(event.target.value)}>
+          <option value="xlsx">Excel workbook</option><option value="pdf">PDF for printing on long bond paper</option>
+        </select><small className="field-hint">{format === "pdf" ? "Ready to print on 8.5 × 13-inch long bond paper, landscape, with narrow margins. No Excel app needed." : "For editing in Excel. Choose PDF for a fixed long bond paper print layout."}</small></label>
         <fieldset className="location-fieldset"><legend>Records to include</legend><p className="field-hint">The download includes the selected Barangay and Purok.</p>
         <label className="field"><span>Barangay</span><select name="barangay" required value={barangayId} onChange={(event) => { setBarangayId(event.target.value); setSitioId(""); setPurokId(""); }}>
           <option value="" disabled>Select a Barangay</option>
@@ -39,7 +43,7 @@ export function ExportExcelDialog({ barangays, puroks, sitios }: { barangays: Ba
           {availableSitios.map((sitio) => <option key={sitio.id} value={sitio.id}>{sitio.name}</option>)}
         </select><small className="field-hint">{barangayId && !availableSitios.length ? "An administrator needs to add a Sitio to this Barangay before export." : "The Sitio labels the report; the Purok determines which records are included."}</small></label></fieldset>
         {barangayId && purokId && <div className="location-context"><span>Selected coverage</span><strong>{barangays.find((item) => item.id === barangayId)?.name} / {availablePuroks.find((item) => item.id === purokId)?.name}</strong>{sitioId && <small>Sitio {availableSitios.find((item) => item.id === sitioId)?.name}</small>}</div>}
-        <div className="export-dialog-actions"><DialogClose asChild><button className="secondary-button" type="button">Cancel</button></DialogClose><button className="primary-button" type="submit" disabled={!barangayId || !purokId || !sitioId}>Download Excel</button></div>
+        <div className="export-dialog-actions"><DialogClose asChild><button className="secondary-button" type="button">Cancel</button></DialogClose><button className="primary-button" type="submit" disabled={!barangayId || !purokId || !sitioId}>{format === "pdf" ? "Download PDF" : "Download Excel"}</button></div>
       </form>
     </DialogContent>
   </Dialog>;
