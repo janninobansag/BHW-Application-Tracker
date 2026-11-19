@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bell, CheckCheck, ChevronRight } from "lucide-react";
 import type { AppUser, Child } from "@/Data/entities";
-import { ageInMonths, isValidBirthday, todayInManila } from "@/Services/child-records";
+import { todayInManila } from "@/Services/child-records";
+import { recentAgeChanges } from "@/Services/age-notifications";
 import { Popover, PopoverContent, PopoverTrigger } from "@/Client/shared/components/ui/popover";
 
-type AgeNotice = { id: string; child: Child; date: string; months: number };
+const readEventName = "bhw-age-notifications-read";
 
 function storedReadIds(key: string): string[] {
   try {
@@ -16,27 +18,8 @@ function storedReadIds(key: string): string[] {
   } catch { return []; }
 }
 
-function daysBefore(today: string, days: number) {
-  const date = new Date(`${today}T12:00:00Z`);
-  date.setUTCDate(date.getUTCDate() - days);
-  return date.toISOString().slice(0, 10);
-}
-
-function recentAgeChanges(children: Child[], today: string): AgeNotice[] {
-  const notices: AgeNotice[] = [];
-  for (let day = 0; day < 7; day++) {
-    const date = daysBefore(today, day);
-    const before = daysBefore(date, 1);
-    for (const child of children) {
-      if (!isValidBirthday(child.birthday, before)) continue;
-      const months = ageInMonths(child.birthday, date);
-      if (months > ageInMonths(child.birthday, before)) notices.push({ id: `${child.id}:${date}`, child, date, months });
-    }
-  }
-  return notices;
-}
-
 export function AgeNotifications({ user }: { user: AppUser }) {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [children, setChildren] = useState<Child[]>([]);
   const [today, setToday] = useState("");
@@ -68,8 +51,16 @@ export function AgeNotifications({ user }: { user: AppUser }) {
         if (Array.isArray(incoming)) markRead(incoming.filter((id): id is string => typeof id === "string"));
       } catch { /* Ignore an invalid storage value and retain this tab's receipts. */ }
     };
+    const receiveSameTabRead = (event: Event) => {
+      const detail = (event as CustomEvent<{ key?: string; ids?: string[] }>).detail;
+      if (detail?.key === storageKey && Array.isArray(detail.ids)) markRead(detail.ids);
+    };
     window.addEventListener("storage", receiveRead);
-    return () => window.removeEventListener("storage", receiveRead);
+    window.addEventListener(readEventName, receiveSameTabRead);
+    return () => {
+      window.removeEventListener("storage", receiveRead);
+      window.removeEventListener(readEventName, receiveSameTabRead);
+    };
   }, [markRead, storageKey]);
 
   useEffect(() => {
@@ -116,11 +107,20 @@ export function AgeNotifications({ user }: { user: AppUser }) {
     };
   }, [storageKey, user.id]);
 
-  return <Popover open={open} onOpenChange={setOpen}>
-    <PopoverTrigger asChild><button type="button" className="notification-trigger" aria-label={`Age notifications${unread ? `, ${unread} unread` : ""}`}><Bell aria-hidden="true" />{unread > 0 && <span className="notification-badge" aria-hidden="true">{unread > 99 ? "99+" : unread}</span>}</button></PopoverTrigger>
-    <PopoverContent align="end" sideOffset={10} collisionPadding={12} className="notification-panel">
-      <div className="notification-heading"><div><h2>Notifications</h2><p>Monthly age changes in the last 7 days</p></div>{unread > 0 && <button type="button" className="notification-read" onClick={() => markRead(notices.map((notice) => notice.id))} aria-label="Mark all notifications as read" title="Mark all as read"><CheckCheck aria-hidden="true" /></button>}</div>
-      {status ? <p className="notification-empty" role="status">{status}</p> : notices.length ? <ul className="notification-list">{notices.map((notice) => <li key={notice.id}><Link href={`/records/${encodeURIComponent(notice.child.id)}`} className={`notification-item${read.includes(notice.id) ? "" : " is-unread"}`} onClick={() => { markRead([notice.id]); setOpen(false); }}><span className="notification-dot" aria-hidden="true" /><span><strong>{notice.child.name}</strong><span>Reached {notice.months} {notice.months === 1 ? "month" : "months"} old</span><small>{notice.date === today ? "Today" : new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric", timeZone: "Asia/Manila" }).format(new Date(`${notice.date}T12:00:00Z`))}</small></span><ChevronRight aria-hidden="true" /></Link></li>)}</ul> : <div className="notification-empty"><Bell aria-hidden="true" /><strong>No recent age changes</strong><p>Age updates for your accessible records will appear here.</p></div>}
-    </PopoverContent>
-  </Popover>;
+  const label = `Age notifications${unread ? `, ${unread} unread` : ""}`;
+  return <>
+    <Link href="/notifications" className="notification-mobile-link" aria-label={label} aria-current={pathname === "/notifications" ? "page" : undefined}>
+      <Bell aria-hidden="true" />
+      {unread > 0 && <span className="notification-badge" aria-hidden="true">{unread > 99 ? "99+" : unread}</span>}
+    </Link>
+    <div className="notification-desktop-control">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild><button type="button" className="notification-trigger" aria-label={label}><Bell aria-hidden="true" />{unread > 0 && <span className="notification-badge" aria-hidden="true">{unread > 99 ? "99+" : unread}</span>}</button></PopoverTrigger>
+        <PopoverContent align="end" sideOffset={10} collisionPadding={12} className="notification-panel">
+          <div className="notification-heading"><div><h2>Notifications</h2><p>Monthly age changes in the last 7 days</p></div>{unread > 0 && <button type="button" className="notification-read" onClick={() => markRead(notices.map((notice) => notice.id))} aria-label="Mark all notifications as read" title="Mark all as read"><CheckCheck aria-hidden="true" /></button>}</div>
+          {status ? <p className="notification-empty" role="status">{status}</p> : notices.length ? <ul className="notification-list">{notices.map((notice) => <li key={notice.id}><Link href={`/records/${encodeURIComponent(notice.child.id)}`} className={`notification-item${read.includes(notice.id) ? "" : " is-unread"}`} onClick={() => { markRead([notice.id]); setOpen(false); }}><span className="notification-dot" aria-hidden="true" /><span><strong>{notice.child.name}</strong><span>Reached {notice.months} {notice.months === 1 ? "month" : "months"} old</span><small>{notice.date === today ? "Today" : new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric", timeZone: "Asia/Manila" }).format(new Date(`${notice.date}T12:00:00Z`))}</small></span><ChevronRight aria-hidden="true" /></Link></li>)}</ul> : <div className="notification-empty"><Bell aria-hidden="true" /><strong>No recent age changes</strong><p>Age updates for your accessible records will appear here.</p></div>}
+        </PopoverContent>
+      </Popover>
+    </div>
+  </>;
 }
