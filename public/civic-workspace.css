@@ -282,6 +282,7 @@ input::placeholder { color: #697c71; opacity: 1; }
 .notification-page-footer { padding: 15px 28px; border-top: 1px solid var(--civic-line); }
 .notification-page-footer a { color: #2b6650; font-size: .78rem; font-weight: 650; text-decoration: none; }
 .notification-page-footer a:hover { text-decoration: underline; }
+.worker-portfolio-page .page-description { display: none; }
 .workspace-coming-soon { display: grid; place-items: center; min-height: 220px; margin: 0; border-top: 3px solid var(--civic-gold); color: var(--civic-ink); font-size: 1.2rem; font-weight: 650; }
 .mobile-workspace-trigger { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid transparent; border-radius: 50%; background: #f1f4f2; color: #315f4a; }
 .mobile-workspace-trigger svg { width: 20px; height: 20px; }
