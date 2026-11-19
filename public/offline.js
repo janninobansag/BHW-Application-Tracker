@@ -130,7 +130,7 @@ import { activeWorkerId, readWorkerContents, queueWorkerChild, queueWorkerDelete
     list.replaceChildren();
     for (const child of records.slice(first, first + 8)) {
       const row = document.createElement("tr");
-      const name = makeText("td", "record-child", "");
+      const name = makeText("th", "record-child", ""); name.scope = "row";
       name.append(makeText("strong", "", child.name), makeText("small", "", `Born ${child.birthday}`));
       if (pendingIds.has(child.id)) name.append(makeText("small", "record-pending", "Waiting to sync"));
       const age = makeText("td", "record-age", `${ageInMonths(child.birthday)} months`); age.dataset.label = "Age";
@@ -152,6 +152,7 @@ import { activeWorkerId, readWorkerContents, queueWorkerChild, queueWorkerDelete
       location.append(desktopLocation, disclosure);
       const actions = makeText("td", "record-actions-cell", "");
       const trigger = makeText("button", "record-menu-trigger", "..."); trigger.type = "button"; trigger.setAttribute("aria-label", `Actions for ${child.name}`); trigger.setAttribute("aria-haspopup", "true"); trigger.setAttribute("aria-expanded", "false");
+      trigger.addEventListener("contextmenu", (event) => event.preventDefault());
       const menu = makeText("div", "record-menu-content cached-menu-content", ""); menu.setAttribute("popover", "auto");
       const edit = makeText("button", "record-menu-item", "Edit"); edit.type = "button";
       const remove = makeText("button", "record-menu-item record-menu-delete", "Delete"); remove.type = "button";
@@ -226,7 +227,7 @@ import { activeWorkerId, readWorkerContents, queueWorkerChild, queueWorkerDelete
       $("registry-grid").classList.add("show-new-record");
       $("new-record-button").setAttribute("aria-expanded", "true");
       $("new-record-button").textContent = "Close new record";
-      $("record-editor").scrollIntoView({ behavior: "smooth", block: "start" });
+      $("record-editor").scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
       $("child-name").focus({ preventScroll: true });
     }
   }
@@ -267,7 +268,7 @@ import { activeWorkerId, readWorkerContents, queueWorkerChild, queueWorkerDelete
       openEditor(null, false);
       $("registry-grid").classList.remove("show-new-record");
       $("new-record-button").setAttribute("aria-expanded", "false");
-      $("new-record-button").textContent = "+ Add a child record";
+      $("new-record-button").textContent = "+ Add child";
       showFeedback("Saved on this device. Changes sync automatically when connected.");
       renderRecords();
       if (navigator.onLine) void syncChanges();
@@ -460,7 +461,7 @@ import { activeWorkerId, readWorkerContents, queueWorkerChild, queueWorkerDelete
   $("new-record-button").addEventListener("click", () => {
     const open = $("registry-grid").classList.toggle("show-new-record");
     $("new-record-button").setAttribute("aria-expanded", String(open));
-    $("new-record-button").textContent = open ? "Close new record" : "+ Add a child record";
+    $("new-record-button").textContent = open ? "Close new record" : "+ Add child";
     if (open) $("child-name").focus();
   });
   $("cancel-edit-button").addEventListener("click", () => { openEditor(null, false); $("registry-grid").classList.remove("show-new-record"); $("new-record-button").setAttribute("aria-expanded", "false"); });

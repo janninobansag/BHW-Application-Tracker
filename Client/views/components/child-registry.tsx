@@ -1,20 +1,12 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { Barangay, Child, Purok, Sitio } from "@/Data/entities";
 import { ChildRecordFilters } from "@/Client/views/components/child-record-filters";
 import { ChildRecordsTable } from "@/Client/views/components/child-records-table";
 import { ExportExcelDialog } from "@/Client/views/components/export-excel-dialog";
-import { Plus, X } from "lucide-react";
+import { Plus, SearchX } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/Client/shared/components/ui/dialog";
-
-function subscribeToDesktop(onChange: () => void) {
-  const media = window.matchMedia("(min-width: 761px)");
-  media.addEventListener("change", onChange);
-  return () => media.removeEventListener("change", onChange);
-}
-const desktopSnapshot = () => window.matchMedia("(min-width: 761px)").matches;
-const serverDesktopSnapshot = () => false;
 
 export function ChildRegistry({
   records,
@@ -41,7 +33,7 @@ export function ChildRegistry({
   const [barangayId, setBarangayId] = useState(initialBarangayId);
   const [purokId, setPurokId] = useState(initialPurokId);
   const [showNewRecord, setShowNewRecord] = useState(false);
-  const isDesktop = useSyncExternalStore(subscribeToDesktop, desktopSnapshot, serverDesktopSnapshot);
+  const [announcedCount, setAnnouncedCount] = useState(records.length);
   const normalizedQuery = query.trim().toLowerCase();
   const visibleRecords = records.filter((record) =>
     (!normalizedQuery || record.name.toLowerCase().includes(normalizedQuery) || record.parents.toLowerCase().includes(normalizedQuery))
@@ -50,6 +42,11 @@ export function ChildRegistry({
   );
   const male = visibleRecords.filter((record) => record.sex === "M").length;
   const female = visibleRecords.filter((record) => record.sex === "F").length;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setAnnouncedCount(visibleRecords.length), 350);
+    return () => window.clearTimeout(timer);
+  }, [visibleRecords.length]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -69,18 +66,15 @@ export function ChildRegistry({
   if (purokId) returnParams.set("purok", purokId);
   const returnTo = returnParams.size ? `/?${returnParams.toString()}` : "/";
 
-  return <Dialog open={isDesktop && showNewRecord} onOpenChange={setShowNewRecord}>
+  return <Dialog open={showNewRecord} onOpenChange={setShowNewRecord}>
     <div className="stats-grid" aria-label="Record totals">
-      <div className="stat"><span>Total children</span><strong>{visibleRecords.length}</strong><small>In the current view</small></div>
+      <div className="stat"><span>Total children</span><strong>{visibleRecords.length}</strong><small>{query || barangayId || purokId ? "Matching your filters" : "In your registry"}</small></div>
       <div className="stat"><span>Male</span><strong>{male}</strong><small>Recorded as M</small></div>
       <div className="stat"><span>Female</span><strong>{female}</strong><small>Recorded as F</small></div>
     </div>
-    <button className="primary-button phone-add-record" type="button" aria-expanded={showNewRecord} aria-controls="new-record-panel" onClick={() => setShowNewRecord((current) => !current)}>
-      {showNewRecord ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}{showNewRecord ? "Close new record" : "Add a child record"}
-    </button>
-    <div className={`workspace-grid registry-workspace registry-workspace-online${showNewRecord ? " show-new-record" : ""}`}>
+    <div className="workspace-grid registry-workspace registry-workspace-online">
       <section className="panel record-panel">
-        <div className="section-heading"><div><p className="eyebrow">Registry</p><h2>Children in your care</h2></div><div className="registry-heading-actions"><ExportExcelDialog barangays={barangays} puroks={puroks} sitios={sitios} />{isDesktop && <DialogTrigger asChild><button type="button" className="primary-button desktop-add-record"><Plus aria-hidden="true" />Add child</button></DialogTrigger>}</div></div>
+        <div className="section-heading"><div><p className="eyebrow">Your registry</p><h2>Child records <span className="registry-total-badge">{records.length}</span></h2></div><div className="registry-heading-actions"><ExportExcelDialog barangays={barangays} puroks={puroks} sitios={sitios} /><DialogTrigger asChild><button type="button" className="primary-button registry-add-record"><Plus aria-hidden="true" />Add child</button></DialogTrigger></div></div>
         <ChildRecordFilters
           barangays={barangays}
           puroks={puroks}
@@ -91,12 +85,12 @@ export function ChildRegistry({
           onBarangayChange={(value) => { setBarangayId(value); setPurokId(""); }}
           onPurokChange={setPurokId}
         />
-        <p className="registry-result-count" aria-live="polite">{visibleRecords.length} {visibleRecords.length === 1 ? "child" : "children"}{query || barangayId || purokId ? " matching your search and filters" : " in your care"}</p>
-        {visibleRecords.length ? <ChildRecordsTable key={`${query}:${barangayId}:${purokId}`} records={visibleRecords} today={today} returnTo={returnTo} /> : <div className="empty-state"><strong>No children found</strong><p>{query || barangayId || purokId ? "Try another search, barangay, or Purok filter." : "Add the first child record using the form."}</p></div>}
-        <p className="table-note">Ages use full months as of {today}. Search and filters update immediately.</p>
+        <p className="registry-result-count">{visibleRecords.length} {visibleRecords.length === 1 ? "child" : "children"}{query || barangayId || purokId ? " matching your search and filters" : " in your care"}</p>
+        <span className="sr-only" role="status">{announcedCount} matching records</span>
+        {visibleRecords.length ? <ChildRecordsTable key={`${query}:${barangayId}:${purokId}`} records={visibleRecords} today={today} returnTo={returnTo} /> : <div className="empty-state"><SearchX aria-hidden="true" /><h3>{records.length ? "No matching records" : "Your registry starts here"}</h3><p>{query || barangayId || purokId ? "Try a different name or clear your location filters." : "Add a child to start building your community’s health records."}</p><button className="secondary-button" type="button" onClick={() => { if (query || barangayId || purokId) { setQuery(""); setBarangayId(""); setPurokId(""); } else setShowNewRecord(true); }}>{query || barangayId || purokId ? "Clear search and filters" : "Add your first child"}</button></div>}
+        <p className="table-note">Age is calculated in full months as of {new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric", year: "numeric", timeZone: "Asia/Manila" }).format(new Date(`${today}T00:00:00+08:00`))}.</p>
       </section>
-      {!isDesktop && <div id="new-record-panel" className="new-record-wrapper">{children}</div>}
     </div>
-    {isDesktop && <DialogContent className="new-record-dialog"><DialogHeader><DialogTitle>Add a child</DialogTitle><DialogDescription>Keep names, birthdays, and location details accurate for reporting.</DialogDescription></DialogHeader>{children}</DialogContent>}
+    <DialogContent className="new-record-dialog"><DialogHeader><p className="eyebrow">New registry entry</p><DialogTitle>Add a child</DialogTitle><DialogDescription>Enter the child’s details and assigned community. All fields are required.</DialogDescription></DialogHeader>{children}</DialogContent>
   </Dialog>;
 }

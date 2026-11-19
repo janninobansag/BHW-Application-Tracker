@@ -9,8 +9,8 @@ export function ChildAgeInput({ initial = "", today, inputId = "birthday-new" }:
 
   return <div className="field">
     <label htmlFor={inputId}>Birthday</label>
-    <input id={inputId} name="birthday" type="date" required max={today}
+    <input id={inputId} name="birthday" type="date" required max={today} aria-describedby={`${inputId}-hint`}
       value={birthday} onChange={(event) => setBirthday(event.target.value)} />
-    <small className="field-hint">{months === null ? "Age appears after you choose a birthday." : `Age: ${months} full months`}</small>
+    <small id={`${inputId}-hint`} className="field-hint">{months === null ? "Age appears after you choose a birthday." : `Age: ${months} full months`}</small>
   </div>;
 }
