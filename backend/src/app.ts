@@ -1,9 +1,10 @@
 import express, { type NextFunction, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
 import { getDb } from "./db.js";
-import { cleanUsername, cookieValue, createSessionToken, hashPassword, hashSessionToken, sessionCookieName, validPassword, verifyPassword } from "./security.js";
+import { cleanUsername, cookieValue, createSessionToken, equalSecret, hashPassword, hashSessionToken, sessionCookieName, validPassword, verifyPassword } from "./security.js";
 import { makeWorkbook } from "./workbook.js";
 import { makePrintReport } from "./print-report.js";
+import { authRateLimit, browserRequestSecurity, responseSecurity, validateJsonRequest } from "./request-security.js";
 
 type User = { id: string; username: string; display_name: string; role: "admin" | "bhw"; password_hash?: string | null; is_active: number; must_change_password: number; created_at?: string; updated_at?: string };
 type UserPublic = Omit<User, "password_hash">;
@@ -17,6 +18,7 @@ const publicUser = (user: User): UserPublic => {
   return result;
 };
 const message = (res: Response, status: number, text: string) => res.status(status).json({ message: text });
+const dummyPasswordHash = hashPassword(randomUUID());
 
 function validName(value: unknown, max = 100): value is string {
   return typeof value === "string" && value.trim().length > 0 && value.trim().length <= max;
@@ -105,11 +107,11 @@ router.get("/api/auth/setup-status", async (_req, res, next) => {
   } catch (error) { return next(error); }
 });
 
-router.post("/api/auth/setup-admin", async (req, res, next) => {
+router.post("/api/auth/setup-admin", authRateLimit("setup", 10, 15 * 60_000), async (req, res, next) => {
   try {
     const db = await getDb();
     const setupToken = process.env.ADMIN_SETUP_TOKEN;
-    if (!setupToken || req.body.setupToken !== setupToken) return message(res, 403, "The setup token is invalid.");
+    if (!equalSecret(req.body.setupToken, setupToken)) return message(res, 403, "The setup token is invalid.");
     if (await db.collection("users").countDocuments({ role: "admin" })) return message(res, 409, "Admin setup is already complete.");
     const password = String(req.body.password ?? "");
     if (!validPassword(password) || password !== req.body.confirm) return message(res, 400, "Use a matching password of 12–128 characters.");
@@ -119,18 +121,31 @@ router.post("/api/auth/setup-admin", async (req, res, next) => {
   } catch (error) { return next(error); }
 });
 
-router.post("/api/auth/login", async (req, res, next) => {
+router.post("/api/auth/login", authRateLimit("login-global", 120, 60_000), authRateLimit("login-account", 20, 15 * 60_000, (req) => cleanUsername(String(req.body.username ?? ""))), async (req, res, next) => {
   try {
     const db = await getDb();
     const username = cleanUsername(String(req.body.username ?? ""));
     const password = String(req.body.password ?? "");
     if (!username || username.length > 80 || password.length > 128) return message(res, 401, "Invalid username or password.");
     const attempt = await db.collection("login_attempts").findOne<{ failures: number; locked_until?: Date | string | null }>({ username });
-    if (attempt?.locked_until && new Date(attempt.locked_until) > new Date()) return message(res, 429, "Too many attempts. Try again later.");
+    if (attempt?.locked_until && new Date(attempt.locked_until) > new Date()) {
+      res.set("Retry-After", String(Math.max(1, Math.ceil((new Date(attempt.locked_until).getTime() - Date.now()) / 1000))));
+      return message(res, 429, "Too many attempts. Try again later.");
+    }
     const user = await db.collection<User>("users").findOne({ username });
-    if (!user?.is_active || !verifyPassword(password, user.password_hash)) {
-      const failures = (attempt?.failures ?? 0) + 1;
-      await db.collection("login_attempts").updateOne({ username }, { $set: { failures: failures >= 5 ? 0 : failures, locked_until: failures >= 5 ? new Date(Date.now() + 15 * 60_000) : null } }, { upsert: true });
+    const matches = verifyPassword(password, user?.password_hash || dummyPasswordHash);
+    if (!user?.is_active || !matches) {
+      // Atomic increments prevent parallel failed requests from losing failures.
+      const failureUpdate = [{ $set: {
+        failures: { $add: [{ $cond: [{ $gt: ["$expires_at", "$$NOW"] }, { $ifNull: ["$failures", 0] }, 0] }, 1] },
+        expires_at: new Date(Date.now() + 15 * 60_000),
+      } }, { $set: { locked_until: { $cond: [{ $gte: ["$failures", 5] }, new Date(Date.now() + 15 * 60_000), null] } } }];
+      try {
+        await db.collection("login_attempts").updateOne({ username }, failureUpdate, { upsert: true });
+      } catch (error) {
+        if (!(error && typeof error === "object" && "code" in error && error.code === 11000)) throw error;
+        await db.collection("login_attempts").updateOne({ username }, failureUpdate);
+      }
       return message(res, 401, "Invalid username or password.");
     }
     await db.collection("login_attempts").deleteOne({ username });
@@ -153,7 +168,7 @@ router.post("/api/auth/logout", requireUser, async (req, res, next) => {
   } catch (error) { return next(error); }
 });
 
-router.post("/api/auth/password", requireUser, async (req, res, next) => {
+router.post("/api/auth/password", requireUser, authRateLimit("password", 10, 15 * 60_000, (_req, res) => (res.locals.user as User).id), async (req, res, next) => {
   try {
     const user = res.locals.user as User;
     const current = String(req.body.current ?? "");
@@ -169,6 +184,10 @@ router.post("/api/auth/password", requireUser, async (req, res, next) => {
 });
 
 router.use("/api", requireUser);
+router.use("/api", (_req, res, next) => {
+  if ((res.locals.user as User).must_change_password) return message(res, 403, "Change your temporary password before accessing records.");
+  return next();
+});
 
 router.get("/api/barangays", async (_req, res, next) => {
   try {
@@ -584,18 +603,17 @@ function excelDateSerial(value: string): number {
 
 export const app = express();
 app.disable("x-powered-by");
+app.use(responseSecurity);
+app.use(browserRequestSecurity);
 app.use(express.json({ limit: "32kb" }));
-app.use((req, res, next) => {
-  if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
-    const origin = req.get("origin");
-    const expectedOrigin = process.env.FRONTEND_ORIGIN;
-    if (origin && expectedOrigin && new URL(origin).origin !== new URL(expectedOrigin).origin) return message(res, 403, "Invalid request origin.");
-  }
-  return next();
-});
+app.use(validateJsonRequest);
 app.use(router);
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  const detail = error instanceof Error ? error.message : "Unknown server error";
-  console.error("API request failed", detail);
+  const type = error && typeof error === "object" && "type" in error ? error.type : null;
+  if (type === "entity.too.large") return message(res, 413, "The request is too large.");
+  if (type === "entity.parse.failed") return message(res, 400, "Invalid JSON request.");
+  if (error && typeof error === "object" && "code" in error && error.code === 11000) return message(res, 409, "That record already exists. Reload before trying again.");
+  // Driver errors can include raw queries, names, and connection details.
+  console.error("API request failed", error instanceof Error ? error.name : "UnknownError");
   return message(res, 500, "The server could not complete this request.");
 });

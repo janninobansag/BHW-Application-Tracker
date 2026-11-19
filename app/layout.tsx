@@ -5,6 +5,9 @@ import "../public/civic-workspace.css";
 import { siteCopy } from "@/Resources/copy";
 import { PwaServiceWorker } from "@/Client/views/components/pwa-service-worker";
 
+// Every HTML response needs its own CSP nonce, including error/placeholder pages.
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: siteCopy.title,
   description: siteCopy.description,
