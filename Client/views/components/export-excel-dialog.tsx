@@ -8,7 +8,7 @@ import {
   DialogHeader, DialogTitle,
 } from "@/Client/shared/components/ui/dialog";
 
-export function ExportExcelDialog({ barangays, puroks, sitios }: { barangays: Barangay[]; puroks: Purok[]; sitios: Sitio[] }) {
+export function ExportExcelDialog({ barangays, puroks, sitios, program = "deworming" }: { barangays: Barangay[]; puroks: Purok[]; sitios: Sitio[]; program?: "deworming" | "timbang" }) {
   const [open, setOpen] = useState(false);
   const [barangayId, setBarangayId] = useState("");
   const [sitioId, setSitioId] = useState("");
@@ -21,10 +21,11 @@ export function ExportExcelDialog({ barangays, puroks, sitios }: { barangays: Ba
     <button type="button" className="primary-button registry-export-button" onClick={() => setOpen(true)} aria-label="Download child report"><Download aria-hidden="true" /><span className="export-label-desktop">Download report</span><span className="export-label-mobile">Export report</span></button>
     <DialogContent className="export-dialog" showCloseButton>
       <DialogHeader>
-        <DialogTitle>Download child records</DialogTitle>
+        <DialogTitle>{program === "timbang" ? "Download Operation Timbang" : "Download child records"}</DialogTitle>
         <DialogDescription>Choose which records to download, then select the Sitio shown in the report heading.</DialogDescription>
       </DialogHeader>
       <form className="export-dialog-form" action={format === "pdf" ? "/api/export/pdf" : "/api/export/xlsx"} method="get">
+        {program === "timbang" && <input type="hidden" name="program" value="timbang" />}
         <label className="field"><span>File format</span><select value={format} onChange={(event) => setFormat(event.target.value)}>
           <option value="xlsx">Excel workbook</option><option value="pdf">PDF for printing on long bond paper</option>
         </select><small className="field-hint">{format === "pdf" ? "Ready to print on 8.5 × 13-inch long bond paper, landscape, with narrow margins. No Excel app needed." : "For editing in Excel. Choose PDF for a fixed long bond paper print layout."}</small></label>

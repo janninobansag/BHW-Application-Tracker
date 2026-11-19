@@ -175,6 +175,48 @@ test("authenticated worker CRUD, assignment access, and filtered Excel export", 
   assert.match(printResponse.headers.get("content-disposition") ?? "", /\.pdf/);
   assert.equal(Buffer.from(await printResponse.arrayBuffer()).subarray(0, 5).toString(), "%PDF-");
 
+  const timbangBody = { id: created.id, expectedUpdatedAt: null, offlineUserId: worker.id, name: "Timbang Child", birthday: created.birthday, sex: "M", parents: "Timbang Guardian", barangayId: barangay.id, purokId: purok.id, weight: "12.25", height: "81", muac: "16.5" };
+  const invalidMeasurement = await request("/api/operation-timbang", { method: "POST", cookie: workerLogin.cookie, body: { ...timbangBody, weight: -1 } });
+  assert.equal(invalidMeasurement.status, 400);
+  const outsideTimbang = await request("/api/operation-timbang", { method: "POST", cookie: workerLogin.cookie, body: { ...timbangBody, purokId: otherPurok.id } });
+  assert.equal(outsideTimbang.status, 400);
+  const createTimbang = await request("/api/operation-timbang", { method: "POST", cookie: workerLogin.cookie, body: timbangBody });
+  assert.equal(createTimbang.status, 200);
+  const timbang = (await createTimbang.json()).child;
+  assert.equal(timbang.weight, 12.25);
+  assert.equal(timbang.height, 81);
+  assert.equal(timbang.muac, 16.5);
+  const replayTimbang = await request("/api/operation-timbang", { method: "POST", cookie: workerLogin.cookie, body: timbangBody });
+  assert.equal(replayTimbang.status, 200, "a lost offline response can be replayed without duplicating a measurement record");
+  const changedReplay = await request("/api/operation-timbang", { method: "POST", cookie: workerLogin.cookie, body: { ...timbangBody, muac: "18" } });
+  assert.equal(changedReplay.status, 409);
+  const operationList = await request("/api/operation-timbang", { cookie: workerLogin.cookie });
+  assert.deepEqual((await operationList.json()).children.map((item) => item.name), ["Timbang Child"]);
+  const dewormingList = await request("/api/children", { cookie: workerLogin.cookie });
+  assert.deepEqual((await dewormingList.json()).children.map((item) => item.name), ["Updated Test Child"], "the same record ID in Operation Timbang cannot overwrite the deworming record");
+  const timbangQuery = `program=timbang&barangay=${encodeURIComponent(barangay.id)}&purok=${encodeURIComponent(purok.id)}&sitio=${encodeURIComponent(sitio.id)}`;
+  const timbangExport = await request(`/api/export/xlsx?${timbangQuery}`, { cookie: admin.cookie });
+  assert.equal(timbangExport.status, 200);
+  assert.match(timbangExport.headers.get("content-disposition"), /operation-timbang-.*\.xlsx/);
+  const timbangSheet = strFromU8(unzipSync(new Uint8Array(await timbangExport.arrayBuffer()))["xl/worksheets/sheet1.xml"]);
+  assert.match(timbangSheet, /Timbang Child/);
+  assert.doesNotMatch(timbangSheet, /Updated Test Child|Vitamin A|Deworming/);
+  assert.match(timbangSheet, /<c r="F7" s="6"><v>12.25<\/v>/);
+  const timbangPdf = await request(`/api/export/xlsx?${timbangQuery}&format=pdf`, { cookie: admin.cookie });
+  assert.equal(timbangPdf.status, 200);
+  assert.match(timbangPdf.headers.get("content-type"), /application\/pdf/);
+  const updateTimbang = await request("/api/operation-timbang", { method: "POST", cookie: workerLogin.cookie, body: { ...timbangBody, expectedUpdatedAt: timbang.updated_at, weight: "13.5", muac: "" } });
+  assert.equal(updateTimbang.status, 200);
+  const editedTimbang = (await updateTimbang.json()).child;
+  assert.equal(editedTimbang.weight, 13.5);
+  assert.equal(editedTimbang.muac, null);
+  const staleTimbang = await request("/api/operation-timbang", { method: "POST", cookie: workerLogin.cookie, body: { ...timbangBody, expectedUpdatedAt: timbang.updated_at } });
+  assert.equal(staleTimbang.status, 409);
+  const deleteTimbang = await request(`/api/operation-timbang/${created.id}`, { method: "DELETE", cookie: workerLogin.cookie, body: { updatedAt: editedTimbang.updated_at } });
+  assert.equal(deleteTimbang.status, 200);
+  const retainedChild = await request("/api/children", { cookie: workerLogin.cookie });
+  assert.deepEqual((await retainedChild.json()).children.map((item) => item.id), [created.id], "deleting from Operation Timbang must preserve the deworming record");
+
   const staleOfflineDelete = await request(`/api/children/${encodeURIComponent(created.id)}`, {
     method: "DELETE", cookie: workerLogin.cookie,
     body: { updatedAt: "older-offline-version", offlineUserId: worker.id },

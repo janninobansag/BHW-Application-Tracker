@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "../public/records-ui.css";
 import "../public/civic-workspace.css";
+import "../public/timbang-ui.css";
 import { siteCopy } from "@/Resources/copy";
 import { PwaServiceWorker } from "@/Client/views/components/pwa-service-worker";
 

@@ -17,6 +17,33 @@ const snapshot = (id) => ({ user: { id, username: id, display_name: "Worker" }, 
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
 
 test("automatic worker storage and reconnect sync preserve records", async (t) => {
+  await t.test("Operation Timbang uses an independent queue and syncs measurements to its own endpoint", async () => {
+    await prepareWorker(snapshot("two-programs"));
+    await queueWorkerChild(child, "shared-id");
+    await prepareWorker(snapshot("two-programs"), undefined, "timbang");
+    const measured = { ...child, weight: "12.25", height: "81", muac: "16.5" };
+    await queueWorkerChild(measured, "shared-id", undefined, "timbang");
+    assert.deepEqual((await readWorkerContents("timbang")).pending[0].child, measured);
+    assert.deepEqual((await readWorkerContents()).pending[0].child, child);
+    globalThis.fetch = async (url, init = {}) => {
+      if (url.endsWith("auth/me")) return json({ user: { id: "two-programs", role: "bhw" } });
+      if (init.method === "POST") {
+        assert.equal(url, "/api/backend/operation-timbang");
+        const body = JSON.parse(init.body);
+        assert.equal(body.muac, "16.5");
+        return json({ child: { id: body.id, ...measured, weight: 12.25, height: 81, muac: 16.5, updated_at: "measured-version" } });
+      }
+      if (url.endsWith("operation-timbang")) return json({ children: [{ id: "shared-id", ...measured, weight: 12.25, height: 81, muac: 16.5, updated_at: "measured-version" }] });
+      if (url.endsWith("barangays")) return json({ barangays: snapshot("two-programs").barangays });
+      return json({ puroks: snapshot("two-programs").puroks });
+    };
+    await syncWorkerChanges("timbang");
+    assert.equal((await readWorkerContents("timbang")).pending.length, 0);
+    assert.equal((await readWorkerContents()).pending.length, 1);
+    await queueWorkerDelete("shared-id", undefined, "timbang");
+    assert.equal((await readWorkerContents("timbang")).pending[0].child.muac, 16.5);
+    assert.equal((await readWorkerContents()).pending[0].kind, "create");
+  });
   await t.test("preparing a fresh snapshot preserves the durable queue and simultaneous saves", async () => {
     await prepareWorker(snapshot("preserve"));
     await Promise.all([queueWorkerChild(child, "a"), queueWorkerChild({ ...child, name: "Another child" }, "b")]);

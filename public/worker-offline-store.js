@@ -38,10 +38,12 @@ function exclusive(operation) {
   return navigator.locks.request("bhw-worker-offline", operation);
 }
 
-async function read(userId) {
-  const record = await stored(userId);
+const storageId = (userId, program) => program === "timbang" ? `${userId}:timbang` : userId;
+
+async function read(userId, program = "deworming") {
+  const record = await stored(storageId(userId, program));
   if (!record) return null;
-  const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: record.iv, additionalData: new TextEncoder().encode(userId) }, record.key, record.ciphertext);
+  const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: record.iv, additionalData: new TextEncoder().encode(record.userId) }, record.key, record.ciphertext);
   return { record, contents: JSON.parse(new TextDecoder().decode(plaintext)) };
 }
 
@@ -51,12 +53,12 @@ async function persist(record, contents) {
   await stored(record.userId, { ...record, iv, ciphertext });
 }
 
-export async function prepareWorker(snapshot, isCurrent = () => true) {
+export async function prepareWorker(snapshot, isCurrent = () => true, program = "deworming") {
   const accessVersion = localStorage.getItem(ACCESS_VERSION);
   return exclusive(async () => {
     const userId = snapshot.user.id;
-    const previous = await read(userId);
-    const record = previous?.record || { userId, key: await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]) };
+    const previous = await read(userId, program);
+    const record = previous?.record || { userId: storageId(userId, program), key: await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]) };
     // Never replace a pending queue when a fresh server snapshot arrives.
     const contents = { snapshot, pending: previous?.contents.pending || [], conflicts: previous?.contents.conflicts || [], ...(previous?.contents.draft ? { draft: previous.contents.draft } : {}) };
     await persist(record, contents);
@@ -65,15 +67,15 @@ export async function prepareWorker(snapshot, isCurrent = () => true) {
   });
 }
 
-export async function readWorkerContents() {
+export async function readWorkerContents(program = "deworming") {
   const userId = activeWorkerId();
-  return userId ? (await read(userId))?.contents || null : null;
+  return userId ? (await read(userId, program))?.contents || null : null;
 }
 
-export async function changeWorkerContents(operation) {
+export async function changeWorkerContents(operation, program = "deworming") {
   return exclusive(async () => {
     const userId = activeWorkerId();
-    const current = userId && await read(userId);
+    const current = userId && await read(userId, program);
     if (!current) throw new Error("Sign in online once on this device to prepare your assigned records.");
     await operation(current.contents);
     if (activeWorkerId() !== userId) throw new Error("The signed-in account changed. Reopen your records.");
@@ -82,7 +84,7 @@ export async function changeWorkerContents(operation) {
   });
 }
 
-export async function queueWorkerChild(child, id = crypto.randomUUID(), expectedUpdatedAt) {
+export async function queueWorkerChild(child, id = crypto.randomUUID(), expectedUpdatedAt, program = "deworming") {
   return changeWorkerContents((contents) => {
     const original = contents.snapshot.children.find((item) => item.id === id);
     const queued = contents.pending.find((item) => item.id === id);
@@ -92,31 +94,32 @@ export async function queueWorkerChild(child, id = crypto.randomUUID(), expected
       queuedAt: queued?.queuedAt || new Date().toISOString() };
     contents.pending = [...contents.pending.filter((item) => item.id !== id), next];
     contents.conflicts = contents.conflicts.filter((item) => item.id !== id);
-  });
+  }, program);
 }
 
-export async function queueWorkerDelete(id, expectedUpdatedAt) {
+export async function queueWorkerDelete(id, expectedUpdatedAt, program = "deworming") {
   return changeWorkerContents((contents) => {
     const original = contents.snapshot.children.find((item) => item.id === id);
     const queued = contents.pending.find((item) => item.id === id);
     if (!original && !queued) throw new Error("This record is no longer available on this device.");
-    const details = queued?.child || { name: original.name, birthday: original.birthday, sex: original.sex, parents: original.parents, barangayId: original.barangay_id, purokId: original.purok_id };
+    const details = queued?.child || { name: original.name, birthday: original.birthday, sex: original.sex, parents: original.parents, barangayId: original.barangay_id, purokId: original.purok_id, ...(program === "timbang" ? { weight: original.weight, height: original.height, muac: original.muac } : {}) };
     contents.pending = contents.pending.filter((item) => item.id !== id);
     // A queued create may already have reached the server before its response was lost.
     // Always keep a delete operation so a later sync can safely remove that same ID.
     contents.pending.push({ id, kind: "delete", child: details, expectedUpdatedAt: queued ? queued.expectedUpdatedAt : expectedUpdatedAt ?? original?.updated_at ?? null, queuedAt: new Date().toISOString() });
     contents.conflicts = contents.conflicts.filter((item) => item.id !== id);
     if (contents.draft?.id === id) delete contents.draft;
-  });
+  }, program);
 }
 
-export async function syncWorkerChanges() {
-  if (!navigator.onLine) return readWorkerContents();
+export async function syncWorkerChanges(program = "deworming") {
+  if (!navigator.onLine) return readWorkerContents(program);
   return exclusive(async () => {
     const userId = activeWorkerId();
-    const current = userId && await read(userId);
+    const current = userId && await read(userId, program);
     if (!current) return null;
     const { record, contents } = current;
+    const endpoint = program === "timbang" ? "operation-timbang" : "children";
     const request = (path, init = {}) => fetch(`/api/backend/${path}`, { ...init, credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(20000) });
     const me = await request("auth/me");
     const identity = await me.json().catch(() => ({}));
@@ -125,13 +128,13 @@ export async function syncWorkerChanges() {
       if (activeWorkerId() !== userId) throw new Error("The account changed. Sync stopped.");
       if (contents.conflicts.some((item) => item.id === pending.id)) continue;
       const deleting = pending.kind === "delete";
-      const response = await request(deleting ? `children/${encodeURIComponent(pending.id)}` : "children", {
+      const response = await request(deleting ? `${endpoint}/${encodeURIComponent(pending.id)}` : endpoint, {
         method: deleting ? "DELETE" : "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify(deleting ? { updatedAt: pending.expectedUpdatedAt, offlineUserId: userId, offlineCreatedChild: pending.expectedUpdatedAt === null ? pending.child : undefined } : { id: pending.id, ...pending.child, expectedUpdatedAt: pending.expectedUpdatedAt, offlineUserId: userId }),
       });
       const result = await response.json().catch(() => ({}));
       if (response.status === 409) {
-        const remoteResponse = await request("children");
+        const remoteResponse = await request(endpoint);
         if (!remoteResponse.ok) throw new Error("Could not check the online record. Please retry sync.");
         const remote = (await remoteResponse.json()).children.find((item) => item.id === pending.id) || null;
         contents.conflicts.push({ id: pending.id, remote, detectedAt: new Date().toISOString() });
@@ -150,7 +153,7 @@ export async function syncWorkerChanges() {
       contents.pending = contents.pending.filter((item) => item.id !== pending.id);
       await persist(record, contents);
     }
-    const responses = await Promise.all(["children", "barangays", "puroks"].map((path) => request(path)));
+    const responses = await Promise.all([endpoint, "barangays", "puroks"].map((path) => request(path)));
     if (responses.every((response) => response.ok)) {
       const [children, barangays, puroks] = await Promise.all(responses.map((response) => response.json()));
       contents.snapshot = { ...contents.snapshot, children: children.children, barangays: barangays.barangays, puroks: puroks.puroks, savedAt: new Date().toISOString() };
