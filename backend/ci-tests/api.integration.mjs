@@ -16,7 +16,7 @@ after(async () => {
 test("authenticated worker CRUD, assignment access, and filtered Excel export", {
   skip: !process.env.MONGODB_URI && "Set MONGODB_URI to run the API integration test.",
 }, async () => {
-  process.env.MONGODB_DATABASE = `bhw_api_test_${randomUUID().replaceAll("-", "")}`;
+  process.env.MONGODB_DATABASE = `bhw_test_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
   process.env.ADMIN_SETUP_TOKEN = "ci-only-admin-setup-token";
   process.env.SESSION_SECRET = "ci-only-session-secret-for-tests";
 
@@ -96,7 +96,16 @@ test("authenticated worker CRUD, assignment access, and filtered Excel export", 
   });
   assert.equal(assign.status, 200);
 
-  const workerLogin = await login("integration.worker", "IntegrationWorker!2026");
+  let workerLogin = await login("integration.worker", "IntegrationWorker!2026");
+  assert.equal((await request("/api/auth/me", { cookie: workerLogin.cookie })).status, 200);
+  for (const path of ["/api/children", "/api/barangays", "/api/export/xlsx"]) {
+    assert.equal((await request(path, { cookie: workerLogin.cookie })).status, 403, "temporary passwords cannot be used to access any registry through the API");
+  }
+  const oldCookie = workerLogin.cookie;
+  const changePassword = await request("/api/auth/password", { method: "POST", cookie: oldCookie, body: { current: "IntegrationWorker!2026", next: "ChangedWorker!2026", confirm: "ChangedWorker!2026" } });
+  assert.equal(changePassword.status, 200);
+  assert.equal((await request("/api/auth/me", { cookie: oldCookie })).status, 401, "password changes invalidate previous sessions");
+  workerLogin = await login("integration.worker", "ChangedWorker!2026");
   const adminOnly = await request("/api/admin/users", { cookie: workerLogin.cookie });
   assert.equal(adminOnly.status, 403, "BHWs must not access admin account management");
 
@@ -115,6 +124,10 @@ test("authenticated worker CRUD, assignment access, and filtered Excel export", 
   assert.equal(createChild.status, 200);
   const created = (await createChild.json()).child;
   assert.equal(created.name, "Test Child");
+  for (const field of ["id", "barangayId", "purokId"]) {
+    const injected = await request("/api/children", { method: "POST", cookie: workerLogin.cookie, body: { name: "Injected", birthday: created.birthday, sex: "M", parents: "Guardian", barangayId: barangay.id, purokId: purok.id, [field]: { $ne: null } } });
+    assert.equal(injected.status, 400, "query operators must never reach record lookups");
+  }
 
   const listed = await request(`/api/children?barangay=${encodeURIComponent(barangay.id)}&purok=${encodeURIComponent(purok.id)}&q=Test%20Child`, { cookie: workerLogin.cookie });
   assert.equal(listed.status, 200);
@@ -162,6 +175,48 @@ test("authenticated worker CRUD, assignment access, and filtered Excel export", 
   assert.match(printResponse.headers.get("content-disposition") ?? "", /\.pdf/);
   assert.equal(Buffer.from(await printResponse.arrayBuffer()).subarray(0, 5).toString(), "%PDF-");
 
+  const timbangBody = { id: created.id, expectedUpdatedAt: null, offlineUserId: worker.id, name: "Timbang Child", birthday: created.birthday, sex: "M", parents: "Timbang Guardian", barangayId: barangay.id, purokId: purok.id, weight: "12.25", height: "81", muac: "16.5" };
+  const invalidMeasurement = await request("/api/operation-timbang", { method: "POST", cookie: workerLogin.cookie, body: { ...timbangBody, weight: -1 } });
+  assert.equal(invalidMeasurement.status, 400);
+  const outsideTimbang = await request("/api/operation-timbang", { method: "POST", cookie: workerLogin.cookie, body: { ...timbangBody, purokId: otherPurok.id } });
+  assert.equal(outsideTimbang.status, 400);
+  const createTimbang = await request("/api/operation-timbang", { method: "POST", cookie: workerLogin.cookie, body: timbangBody });
+  assert.equal(createTimbang.status, 200);
+  const timbang = (await createTimbang.json()).child;
+  assert.equal(timbang.weight, 12.25);
+  assert.equal(timbang.height, 81);
+  assert.equal(timbang.muac, 16.5);
+  const replayTimbang = await request("/api/operation-timbang", { method: "POST", cookie: workerLogin.cookie, body: timbangBody });
+  assert.equal(replayTimbang.status, 200, "a lost offline response can be replayed without duplicating a measurement record");
+  const changedReplay = await request("/api/operation-timbang", { method: "POST", cookie: workerLogin.cookie, body: { ...timbangBody, muac: "18" } });
+  assert.equal(changedReplay.status, 409);
+  const operationList = await request("/api/operation-timbang", { cookie: workerLogin.cookie });
+  assert.deepEqual((await operationList.json()).children.map((item) => item.name), ["Timbang Child"]);
+  const dewormingList = await request("/api/children", { cookie: workerLogin.cookie });
+  assert.deepEqual((await dewormingList.json()).children.map((item) => item.name), ["Updated Test Child"], "the same record ID in Operation Timbang cannot overwrite the deworming record");
+  const timbangQuery = `program=timbang&barangay=${encodeURIComponent(barangay.id)}&purok=${encodeURIComponent(purok.id)}&sitio=${encodeURIComponent(sitio.id)}`;
+  const timbangExport = await request(`/api/export/xlsx?${timbangQuery}`, { cookie: admin.cookie });
+  assert.equal(timbangExport.status, 200);
+  assert.match(timbangExport.headers.get("content-disposition"), /operation-timbang-.*\.xlsx/);
+  const timbangSheet = strFromU8(unzipSync(new Uint8Array(await timbangExport.arrayBuffer()))["xl/worksheets/sheet1.xml"]);
+  assert.match(timbangSheet, /Timbang Child/);
+  assert.doesNotMatch(timbangSheet, /Updated Test Child|Vitamin A|Deworming/);
+  assert.match(timbangSheet, /<c r="F7" s="6"><v>12.25<\/v>/);
+  const timbangPdf = await request(`/api/export/xlsx?${timbangQuery}&format=pdf`, { cookie: admin.cookie });
+  assert.equal(timbangPdf.status, 200);
+  assert.match(timbangPdf.headers.get("content-type"), /application\/pdf/);
+  const updateTimbang = await request("/api/operation-timbang", { method: "POST", cookie: workerLogin.cookie, body: { ...timbangBody, expectedUpdatedAt: timbang.updated_at, weight: "13.5", muac: "" } });
+  assert.equal(updateTimbang.status, 200);
+  const editedTimbang = (await updateTimbang.json()).child;
+  assert.equal(editedTimbang.weight, 13.5);
+  assert.equal(editedTimbang.muac, null);
+  const staleTimbang = await request("/api/operation-timbang", { method: "POST", cookie: workerLogin.cookie, body: { ...timbangBody, expectedUpdatedAt: timbang.updated_at } });
+  assert.equal(staleTimbang.status, 409);
+  const deleteTimbang = await request(`/api/operation-timbang/${created.id}`, { method: "DELETE", cookie: workerLogin.cookie, body: { updatedAt: editedTimbang.updated_at } });
+  assert.equal(deleteTimbang.status, 200);
+  const retainedChild = await request("/api/children", { cookie: workerLogin.cookie });
+  assert.deepEqual((await retainedChild.json()).children.map((item) => item.id), [created.id], "deleting from Operation Timbang must preserve the deworming record");
+
   const staleOfflineDelete = await request(`/api/children/${encodeURIComponent(created.id)}`, {
     method: "DELETE", cookie: workerLogin.cookie,
     body: { updatedAt: "older-offline-version", offlineUserId: worker.id },
@@ -185,4 +240,18 @@ test("authenticated worker CRUD, assignment access, and filtered Excel export", 
   assert.equal(repeatedOfflineDelete.status, 200, "replaying a deletion after a lost response must succeed");
   const afterDelete = await request(`/api/children?q=Updated%20Test%20Child`, { cookie: workerLogin.cookie });
   assert.deepEqual((await afterDelete.json()).children, []);
+
+  const { consumeLimit } = await import("../src/request-security.ts");
+  const parallelLimits = await Promise.all(Array.from({ length: 12 }, () => consumeLimit("test", "parallel", 5, 60_000)));
+  assert.equal(parallelLimits.filter((retry) => retry === 0).length, 5, "concurrent requests share an atomic database counter");
+  const failures = await Promise.all(Array.from({ length: 5 }, () => request("/api/auth/login", { method: "POST", body: { username: "unknown.worker", password: "InvalidPassword!2026" } })));
+  assert.ok(failures.every((response) => [401, 429].includes(response.status)));
+  const locked = await request("/api/auth/login", { method: "POST", body: { username: "unknown.worker", password: "InvalidPassword!2026" } });
+  assert.equal(locked.status, 429);
+  assert.ok(Number(locked.headers.get("retry-after")) > 0);
+  const throttleRecord = await database.collection("login_attempts").findOne({ username: "unknown.worker" });
+  assert.ok(throttleRecord.expires_at instanceof Date, "failed login records expire automatically");
+
+  assert.equal((await request(`/api/admin/users/${worker.id}/active`, { method: "PUT", cookie: admin.cookie, body: { active: false } })).status, 200);
+  assert.equal((await request("/api/auth/me", { cookie: workerLogin.cookie })).status, 401, "deactivated workers lose their server session");
 });

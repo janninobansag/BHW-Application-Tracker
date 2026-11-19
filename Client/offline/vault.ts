@@ -15,6 +15,9 @@ export type OfflineChildInput = {
   parents: string;
   barangayId: string;
   purokId: string;
+  weight?: number | string | null;
+  height?: number | string | null;
+  muac?: number | string | null;
 };
 
 export type OfflinePendingChange = {

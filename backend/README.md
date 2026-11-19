@@ -51,4 +51,6 @@ Import the repository into Vercel with the repository root as the project root. 
 
 After importing D1, sign in with the migrated Admin account. If the database has no Admin, use `/setup` with `ADMIN_SETUP_TOKEN`. Remove that token from Render after the Admin password is set.
 
+Production startup requires a random `SESSION_SECRET` of at least 32 characters, an exact HTTPS `FRONTEND_ORIGIN`, and an equally strong `ADMIN_SETUP_TOKEN` when present. See [SECURITY.md](../SECURITY.md) for request protections, authentication limits, and offline access boundaries.
+
 No service is deployed or published by these source changes. Keep the current site and D1 available until the new API and frontend have been configured and verified.

@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { argon2id } from "@noble/hashes/argon2.js";
 
 const argonOptions = { t: 2, m: 19_456, p: 1, dkLen: 32 } as const;
@@ -12,6 +12,10 @@ export const hashSessionToken = (token: string) => {
   return createHmac("sha256", secret).update(token).digest("hex");
 };
 export const createSessionToken = () => randomBytes(32).toString("base64url");
+export function equalSecret(candidate: unknown, expected: string | undefined): boolean {
+  if (typeof candidate !== "string" || !expected || candidate.length > 1024) return false;
+  return timingSafeEqual(createHash("sha256").update(candidate).digest(), createHash("sha256").update(expected).digest());
+}
 
 export function hashPassword(password: string): string {
   const salt = randomBytes(16);
@@ -20,7 +24,7 @@ export function hashPassword(password: string): string {
 }
 
 export function verifyPassword(password: string, stored: string | null | undefined): boolean {
-  if (!stored) return false;
+  if (!stored || password.length > 128) return false;
   const [algorithm, version, time, memory, parallelism, saltValue, hashValue] = stored.split(":");
   if (algorithm !== "argon2id" || version !== "19" || time !== "2" || memory !== "19456" || parallelism !== "1" || !saltValue || !hashValue) return false;
   try {

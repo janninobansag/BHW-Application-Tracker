@@ -73,6 +73,17 @@ export async function deleteChildRecord(form: FormData) {
   go(returnTo, message);
 }
 
+export async function saveTimbangRecord(form: FormData) {
+  go("/operation-timbang", await submit("/operation-timbang", form, "/operation-timbang"));
+}
+
+export async function deleteTimbangRecord(form: FormData) {
+  const id = value(form, "childId");
+  const requestedReturnTo = value(form, "returnTo");
+  const returnTo = requestedReturnTo.startsWith("/operation-timbang?") && !requestedReturnTo.includes("\\") ? requestedReturnTo : "/operation-timbang";
+  go(returnTo, await submit(`/operation-timbang/${encodeURIComponent(id)}`, form, returnTo, "DELETE", { updatedAt: value(form, "updatedAt") }));
+}
+
 export async function addBarangay(form: FormData) {
   go("/admin", await submit("/admin/barangays", form, "/admin"));
 }

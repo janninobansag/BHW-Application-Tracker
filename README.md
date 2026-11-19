@@ -45,4 +45,6 @@ The former Cloudflare deployment is not changed by local code edits. Do not swit
 
 ## Privacy
 
+See [SECURITY.md](SECURITY.md) for account protections, deployment requirements, request validation, and the limits of automatic offline access.
+
 The system stores identifying information about children and guardians. Restrict Atlas and deployment access to authorized staff. The temporary D1 migration snapshot includes password hashes, is written under the ignored `outputs/` directory by default, and should be deleted after import.

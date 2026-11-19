@@ -1,6 +1,6 @@
 import "server-only";
 import { backendJson } from "./api-client";
-import type { AppUser, Barangay, Child, ManagedUser, Purok, Sitio } from "./entities";
+import type { AppUser, Barangay, Child, ManagedUser, Purok, Sitio, TimbangRecord } from "./entities";
 export type { Barangay, Child, ManagedUser, Purok, Sitio } from "./entities";
 
 export async function isSetupComplete(): Promise<boolean> {
@@ -32,4 +32,8 @@ export async function listChildren(_user: AppUser, q = "", barangayId = "", puro
 
 export async function listManagedUsers(): Promise<ManagedUser[]> {
   return (await backendJson<{ users: ManagedUser[] }>("/admin/users")).users;
+}
+
+export async function listTimbangRecords(_user: AppUser): Promise<TimbangRecord[]> {
+  return (await backendJson<{ children: TimbangRecord[] }>("/operation-timbang")).children;
 }

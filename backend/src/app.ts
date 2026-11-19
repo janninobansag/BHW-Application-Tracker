@@ -1,22 +1,26 @@
 import express, { type NextFunction, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
 import { getDb } from "./db.js";
-import { cleanUsername, cookieValue, createSessionToken, hashPassword, hashSessionToken, sessionCookieName, validPassword, verifyPassword } from "./security.js";
+import { cleanUsername, cookieValue, createSessionToken, equalSecret, hashPassword, hashSessionToken, sessionCookieName, validPassword, verifyPassword } from "./security.js";
 import { makeWorkbook } from "./workbook.js";
 import { makePrintReport } from "./print-report.js";
+import { authRateLimit, browserRequestSecurity, responseSecurity, validateJsonRequest } from "./request-security.js";
+import { parseMeasurements, type Measurements } from "./timbang.js";
 
 type User = { id: string; username: string; display_name: string; role: "admin" | "bhw"; password_hash?: string | null; is_active: number; must_change_password: number; created_at?: string; updated_at?: string };
 type UserPublic = Omit<User, "password_hash">;
 type Barangay = { id: string; name: string; created_at?: string };
 type Sitio = { id: string; name: string; barangay_id: string; created_at?: string };
 type Purok = { id: string; name: string; barangay_id: string; created_at?: string };
-type Child = { id: string; name: string; birthday: string; sex: "F" | "M"; parents: string; barangay_id: string; purok_id: string; created_by: string; created_at: string; updated_at: string };
+type Child = { id: string; name: string; birthday: string; sex: "F" | "M"; parents: string; barangay_id: string; purok_id: string; created_by: string; created_at: string; updated_at: string } & Partial<Measurements>;
+const recordCollection = (req: Request) => req.path.startsWith("/api/operation-timbang") ? "operation_timbang" : "children";
 const now = () => new Date().toISOString();
 const publicUser = (user: User): UserPublic => {
   const { password_hash: _passwordHash, ...result } = user;
   return result;
 };
 const message = (res: Response, status: number, text: string) => res.status(status).json({ message: text });
+const dummyPasswordHash = hashPassword(randomUUID());
 
 function validName(value: unknown, max = 100): value is string {
   return typeof value === "string" && value.trim().length > 0 && value.trim().length <= max;
@@ -105,11 +109,11 @@ router.get("/api/auth/setup-status", async (_req, res, next) => {
   } catch (error) { return next(error); }
 });
 
-router.post("/api/auth/setup-admin", async (req, res, next) => {
+router.post("/api/auth/setup-admin", authRateLimit("setup", 10, 15 * 60_000), async (req, res, next) => {
   try {
     const db = await getDb();
     const setupToken = process.env.ADMIN_SETUP_TOKEN;
-    if (!setupToken || req.body.setupToken !== setupToken) return message(res, 403, "The setup token is invalid.");
+    if (!equalSecret(req.body.setupToken, setupToken)) return message(res, 403, "The setup token is invalid.");
     if (await db.collection("users").countDocuments({ role: "admin" })) return message(res, 409, "Admin setup is already complete.");
     const password = String(req.body.password ?? "");
     if (!validPassword(password) || password !== req.body.confirm) return message(res, 400, "Use a matching password of 12–128 characters.");
@@ -119,18 +123,31 @@ router.post("/api/auth/setup-admin", async (req, res, next) => {
   } catch (error) { return next(error); }
 });
 
-router.post("/api/auth/login", async (req, res, next) => {
+router.post("/api/auth/login", authRateLimit("login-global", 120, 60_000), authRateLimit("login-account", 20, 15 * 60_000, (req) => cleanUsername(String(req.body.username ?? ""))), async (req, res, next) => {
   try {
     const db = await getDb();
     const username = cleanUsername(String(req.body.username ?? ""));
     const password = String(req.body.password ?? "");
     if (!username || username.length > 80 || password.length > 128) return message(res, 401, "Invalid username or password.");
     const attempt = await db.collection("login_attempts").findOne<{ failures: number; locked_until?: Date | string | null }>({ username });
-    if (attempt?.locked_until && new Date(attempt.locked_until) > new Date()) return message(res, 429, "Too many attempts. Try again later.");
+    if (attempt?.locked_until && new Date(attempt.locked_until) > new Date()) {
+      res.set("Retry-After", String(Math.max(1, Math.ceil((new Date(attempt.locked_until).getTime() - Date.now()) / 1000))));
+      return message(res, 429, "Too many attempts. Try again later.");
+    }
     const user = await db.collection<User>("users").findOne({ username });
-    if (!user?.is_active || !verifyPassword(password, user.password_hash)) {
-      const failures = (attempt?.failures ?? 0) + 1;
-      await db.collection("login_attempts").updateOne({ username }, { $set: { failures: failures >= 5 ? 0 : failures, locked_until: failures >= 5 ? new Date(Date.now() + 15 * 60_000) : null } }, { upsert: true });
+    const matches = verifyPassword(password, user?.password_hash || dummyPasswordHash);
+    if (!user?.is_active || !matches) {
+      // Atomic increments prevent parallel failed requests from losing failures.
+      const failureUpdate = [{ $set: {
+        failures: { $add: [{ $cond: [{ $gt: ["$expires_at", "$$NOW"] }, { $ifNull: ["$failures", 0] }, 0] }, 1] },
+        expires_at: new Date(Date.now() + 15 * 60_000),
+      } }, { $set: { locked_until: { $cond: [{ $gte: ["$failures", 5] }, new Date(Date.now() + 15 * 60_000), null] } } }];
+      try {
+        await db.collection("login_attempts").updateOne({ username }, failureUpdate, { upsert: true });
+      } catch (error) {
+        if (!(error && typeof error === "object" && "code" in error && error.code === 11000)) throw error;
+        await db.collection("login_attempts").updateOne({ username }, failureUpdate);
+      }
       return message(res, 401, "Invalid username or password.");
     }
     await db.collection("login_attempts").deleteOne({ username });
@@ -153,7 +170,7 @@ router.post("/api/auth/logout", requireUser, async (req, res, next) => {
   } catch (error) { return next(error); }
 });
 
-router.post("/api/auth/password", requireUser, async (req, res, next) => {
+router.post("/api/auth/password", requireUser, authRateLimit("password", 10, 15 * 60_000, (_req, res) => (res.locals.user as User).id), async (req, res, next) => {
   try {
     const user = res.locals.user as User;
     const current = String(req.body.current ?? "");
@@ -169,6 +186,10 @@ router.post("/api/auth/password", requireUser, async (req, res, next) => {
 });
 
 router.use("/api", requireUser);
+router.use("/api", (_req, res, next) => {
+  if ((res.locals.user as User).must_change_password) return message(res, 403, "Change your temporary password before accessing records.");
+  return next();
+});
 
 router.get("/api/barangays", async (_req, res, next) => {
   try {
@@ -213,7 +234,7 @@ router.get("/api/sitios", async (req, res, next) => {
   } catch (error) { return next(error); }
 });
 
-router.get("/api/children", async (req, res, next) => {
+router.get(["/api/children", "/api/operation-timbang"], async (req, res, next) => {
   try {
     const user = res.locals.user as User;
     const db = await getDb();
@@ -232,7 +253,7 @@ router.get("/api/children", async (req, res, next) => {
     }
     const q = String(req.query.q ?? "").trim().slice(0, 80);
     if (q) query.$or = [{ name: { $regex: escapeRegExp(q), $options: "i" } }, { parents: { $regex: escapeRegExp(q), $options: "i" } }];
-    const docs = await db.collection<Child>("children").find(query).sort({ name: 1, birthday: 1 }).toArray();
+    const docs = await db.collection<Child>(recordCollection(req)).find(query).sort({ name: 1, birthday: 1 }).toArray();
     const barangayIds = [...new Set(docs.map((child) => child.barangay_id))];
     const purokIds = [...new Set(docs.map((child) => child.purok_id))];
     const [barangays, puroks, assignments] = await Promise.all([
@@ -269,7 +290,7 @@ router.get("/api/admin/users", requireAdmin, async (_req, res, next) => {
   } catch (error) { return next(error); }
 });
 
-router.post("/api/children", async (req, res, next) => {
+router.post(["/api/children", "/api/operation-timbang"], async (req, res, next) => {
   try {
     const user = res.locals.user as User;
     if (req.body.offlineUserId && (req.body.offlineUserId !== user.id || user.role !== "bhw")) return message(res, 403, "Sign in to the worker account that saved these offline changes.");
@@ -277,37 +298,39 @@ router.post("/api/children", async (req, res, next) => {
     const hasOfflineVersion = Object.prototype.hasOwnProperty.call(req.body, "expectedUpdatedAt");
     const expectedVersion = hasOfflineVersion ? expectedUpdatedAt : updatedAt;
     const hasExpectedVersion = hasOfflineVersion || (typeof updatedAt === "string" && updatedAt.length > 0);
+    const measurements = recordCollection(req) === "operation_timbang" ? parseMeasurements(req.body) : {};
+    if (!measurements) return message(res, 400, "Enter weight, height, and MUAC as positive numbers up to 1000 with at most two decimal places, or leave them blank.");
     if (!validName(name, 120) || !validName(parents, 240) || !validBirthday(birthday) || !["F", "M"].includes(sex) || !(await canAccessBarangay(user, barangayId)) || !(await canAccessPurok(user, purokId, barangayId))) return message(res, 400, "Check the child details and assigned barangay/Purok.");
     const db = await getDb();
     const stamp = now();
-    const child: Child = { id: id || randomUUID(), name: name.trim(), birthday, sex, parents: parents.trim(), barangay_id: barangayId, purok_id: purokId, created_by: user.id, created_at: stamp, updated_at: stamp };
+    const child: Child = { id: id || randomUUID(), name: name.trim(), birthday, sex, parents: parents.trim(), barangay_id: barangayId, purok_id: purokId, created_by: user.id, created_at: stamp, updated_at: stamp, ...measurements };
     if (id) {
-      const existing = await db.collection<Child>("children").findOne({ id });
+      const existing = await db.collection<Child>(recordCollection(req)).findOne({ id });
       if (!existing) {
         if (!hasOfflineVersion) return message(res, 404, "Record unavailable.");
         if (expectedUpdatedAt !== null) return message(res, 409, "This record no longer exists online. Review your offline copy before syncing.");
-        await db.collection<Child>("children").insertOne(child);
+        await db.collection<Child>(recordCollection(req)).insertOne(child);
         return res.json({ message: "Child record added.", child });
       }
       if (!(await canAccessPurok(user, existing.purok_id, existing.barangay_id))) return message(res, 404, "Record unavailable.");
       if (hasOfflineVersion && expectedUpdatedAt === null) {
-        const sameOfflineCreate = existing.created_by === user.id && existing.name === child.name && existing.birthday === child.birthday && existing.sex === child.sex && existing.parents === child.parents && existing.barangay_id === child.barangay_id && existing.purok_id === child.purok_id;
+        const sameOfflineCreate = existing.created_by === user.id && existing.name === child.name && existing.birthday === child.birthday && existing.sex === child.sex && existing.parents === child.parents && existing.barangay_id === child.barangay_id && existing.purok_id === child.purok_id && (recordCollection(req) !== "operation_timbang" || ["weight", "height", "muac"].every((key) => existing[key as keyof Measurements] === child[key as keyof Measurements]));
         return sameOfflineCreate ? res.json({ message: "Child record was already synced.", child: existing }) : message(res, 409, "A record with this offline ID already exists with different details.");
       }
       if (hasExpectedVersion && (typeof expectedVersion !== "string" || existing.updated_at !== expectedVersion)) return message(res, 409, hasOfflineVersion ? "This record changed online after your offline copy was saved." : "This record changed after you opened it. Reload the record before saving again.");
       child.created_by = existing.created_by;
       child.created_at = existing.created_at;
       const filter = hasExpectedVersion ? { id, updated_at: existing.updated_at } : { id };
-      const saved = await db.collection<Child>("children").replaceOne(filter, child);
+      const saved = await db.collection<Child>(recordCollection(req)).replaceOne(filter, child);
       if (!saved.matchedCount) return message(res, 409, hasOfflineVersion ? "This record changed online after your offline copy was saved." : "This record changed after you opened it. Reload the record before saving again.");
       return res.json({ message: "Child record updated.", child });
     }
-    await db.collection<Child>("children").insertOne(child);
+    await db.collection<Child>(recordCollection(req)).insertOne(child);
     return res.json({ message: "Child record added.", child });
   } catch (error) { return next(error); }
 });
 
-router.delete("/api/children/:id", async (req, res, next) => {
+router.delete(["/api/children/:id", "/api/operation-timbang/:id"], async (req, res, next) => {
   try {
     const user = res.locals.user as User;
     const offlineDelete = Boolean(req.body.offlineUserId);
@@ -315,16 +338,20 @@ router.delete("/api/children/:id", async (req, res, next) => {
     const id = String(req.params.id);
     const updatedAt = typeof req.body.updatedAt === "string" ? req.body.updatedAt : "";
     const db = await getDb();
-    const child = await db.collection<Child>("children").findOne({ id });
+    const child = await db.collection<Child>(recordCollection(req)).findOne({ id });
     if (!child && offlineDelete) return res.json({ message: "Child record is already deleted." });
     if (!child || !(await canAccessPurok(user, child.purok_id, child.barangay_id))) return message(res, 404, "Record unavailable.");
     if (offlineDelete && !updatedAt) {
       const created = req.body.offlineCreatedChild;
       if (!created || child.created_by !== user.id || child.name !== created.name || child.birthday !== created.birthday || child.sex !== created.sex || child.parents !== created.parents || child.barangay_id !== created.barangayId || child.purok_id !== created.purokId) return message(res, 409, "This record changed online. Review it before deleting.");
+      if (recordCollection(req) === "operation_timbang") {
+        const measurements = parseMeasurements(created);
+        if (!measurements || (["weight", "height", "muac"] as const).some((field) => (child[field] ?? null) !== measurements[field])) return message(res, 409, "This record's measurements changed online. Review it before deleting.");
+      }
     }
     if (updatedAt && child.updated_at !== updatedAt) return message(res, 409, "This record changed after you opened it. Reload and review it before deleting.");
     const filter = updatedAt || offlineDelete ? { id, updated_at: updatedAt || child.updated_at } : { id };
-    const result = await db.collection<Child>("children").deleteOne(filter);
+    const result = await db.collection<Child>(recordCollection(req)).deleteOne(filter);
     if (!result.deletedCount) return message(res, 409, "This record changed before it could be deleted. Reload and try again.");
     return res.json({ message: "Child record deleted." });
   } catch (error) { return next(error); }
@@ -360,17 +387,19 @@ router.delete("/api/admin/barangays/:id", requireAdmin, async (req, res, next) =
     const db = await getDb();
     const barangay = await db.collection<Barangay>("barangays").findOne({ id: barangayId });
     if (!barangay) return message(res, 404, "Barangay unavailable.");
-    const [puroks, sitios, children, assignedWorkers] = await Promise.all([
+    const [puroks, sitios, children, assignedWorkers, timbangRecords] = await Promise.all([
       db.collection<Purok>("puroks").countDocuments({ barangay_id: barangayId }),
       db.collection<Sitio>("sitios").countDocuments({ barangay_id: barangayId }),
       db.collection<Child>("children").countDocuments({ barangay_id: barangayId }),
       db.collection("assignments").countDocuments({ barangay_id: barangayId }),
+      db.collection<Child>("operation_timbang").countDocuments({ barangay_id: barangayId }),
     ]);
-    if (puroks || children || assignedWorkers) {
+    if (puroks || children || assignedWorkers || timbangRecords) {
       const reasons = [
         puroks && `${puroks} Purok${puroks === 1 ? "" : "s"}`,
         sitios && `${sitios} Sitio${sitios === 1 ? "" : "s"}`,
         children && `${children} child record${children === 1 ? "" : "s"}`,
+        timbangRecords && `${timbangRecords} Operation Timbang record${timbangRecords === 1 ? "" : "s"}`,
         assignedWorkers && `${assignedWorkers} BHW assignment${assignedWorkers === 1 ? "" : "s"}`,
       ].filter(Boolean);
       return message(res, 409, `Cannot delete ${barangay.name} while it has ${reasons.join(", ")}. Remove or reassign them first.`);
@@ -447,13 +476,15 @@ router.delete("/api/admin/puroks/:id", requireAdmin, async (req, res, next) => {
     const db = await getDb();
     const purok = await db.collection<Purok>("puroks").findOne({ id: req.params.id });
     if (!purok) return message(res, 404, "Purok unavailable.");
-    const [children, assignedWorkers] = await Promise.all([
+    const [children, assignedWorkers, timbangRecords] = await Promise.all([
       db.collection<Child>("children").countDocuments({ purok_id: purok.id }),
       db.collection("purok_assignments").countDocuments({ purok_id: purok.id }),
+      db.collection<Child>("operation_timbang").countDocuments({ purok_id: purok.id }),
     ]);
-    if (children || assignedWorkers) {
+    if (children || assignedWorkers || timbangRecords) {
       const reasons = [
         children && `${children} child record${children === 1 ? "" : "s"}`,
+        timbangRecords && `${timbangRecords} Operation Timbang record${timbangRecords === 1 ? "" : "s"}`,
         assignedWorkers && `${assignedWorkers} BHW assignment${assignedWorkers === 1 ? "" : "s"}`,
       ].filter(Boolean);
       return message(res, 409, `Cannot delete Purok ${purok.name} while it has ${reasons.join(" and ")}. Reassign or remove them first.`);
@@ -529,6 +560,8 @@ router.get("/api/export/xlsx", async (req, res, next) => {
   try {
     const format = req.query.format ?? "xlsx";
     if (format !== "xlsx" && format !== "pdf") return message(res, 400, "Choose Excel or PDF format.");
+    if (req.query.program && req.query.program !== "timbang") return message(res, 400, "Choose a valid report.");
+    const program = req.query.program === "timbang" ? "timbang" : "deworming";
     const user = res.locals.user as User;
     if (user.must_change_password) return message(res, 403, "Change your password before exporting.");
     const db = await getDb();
@@ -547,7 +580,7 @@ router.get("/api/export/xlsx", async (req, res, next) => {
     if (q) query.$or = [{ name: { $regex: escapeRegExp(q), $options: "i" } }, { parents: { $regex: escapeRegExp(q), $options: "i" } }];
     const today = todayInManila();
     const excludeAgeExtremes = String(req.query.excludeAgeExtremes ?? "") === "true";
-    const matchedChildren = await db.collection<Child>("children").find(query).sort({ name: 1, birthday: 1 }).toArray();
+    const matchedChildren = await db.collection<Child>(program === "timbang" ? "operation_timbang" : "children").find(query).sort({ name: 1, birthday: 1 }).toArray();
     const children = excludeAgeExtremes
       ? matchedChildren.filter((child) => {
         const months = ageInMonths(child.birthday, today);
@@ -563,11 +596,14 @@ router.get("/api/export/xlsx", async (req, res, next) => {
     const purok = await db.collection<Purok>("puroks").findOne({ id: requestedPurok, barangay_id: requestedBarangay });
     const workers = await db.collection<User>("users").find({ id: { $in: assignedWorkers.map((item) => String(item.user_id)) }, role: "bhw", is_active: 1 }).toArray();
     const bhwName = workers.map((worker) => worker.display_name).join(", ") || (user.role === "bhw" ? user.display_name : "Unassigned");
-    const rows = children.map((child, index) => [`${index + 1}.`, child.name, excelDateSerial(child.birthday), purokName.get(child.purok_id) ?? "", ageInMonths(child.birthday, today), child.sex, "", "", "", "", child.parents]);
-    const heading = { barangay: barangay?.name ?? "", sitio: sitio.name, purok: purok?.name ?? "", bhw: bhwName };
-    const file = Buffer.from(format === "pdf" ? await makePrintReport(heading, rows) : makeWorkbook(heading, rows));
+    const rows = children.map((child, index) => {
+      const common = [`${index + 1}.`, child.name, excelDateSerial(child.birthday), purokName.get(child.purok_id) ?? "", ageInMonths(child.birthday, today)];
+      return program === "timbang" ? [...common, child.weight ?? "", child.height ?? "", child.muac ?? "", child.parents, child.sex] : [...common, child.sex, "", "", "", "", child.parents];
+    });
+    const heading = { barangay: barangay?.name ?? "", sitio: sitio.name, purok: purok?.name ?? "", bhw: bhwName, year: today.slice(0, 4) };
+    const file = Buffer.from(format === "pdf" ? await makePrintReport(heading, rows, program) : makeWorkbook(heading, rows, program));
     res.setHeader("Content-Type", format === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    res.setHeader("Content-Disposition", `attachment; filename="vitamin-a-deworming-${today}.${format}"`);
+    res.setHeader("Content-Disposition", `attachment; filename="${program === "timbang" ? "operation-timbang" : "vitamin-a-deworming"}-${today}.${format}"`);
     res.setHeader("Content-Length", String(file.length));
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "private, no-store");
@@ -584,18 +620,17 @@ function excelDateSerial(value: string): number {
 
 export const app = express();
 app.disable("x-powered-by");
+app.use(responseSecurity);
+app.use(browserRequestSecurity);
 app.use(express.json({ limit: "32kb" }));
-app.use((req, res, next) => {
-  if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
-    const origin = req.get("origin");
-    const expectedOrigin = process.env.FRONTEND_ORIGIN;
-    if (origin && expectedOrigin && new URL(origin).origin !== new URL(expectedOrigin).origin) return message(res, 403, "Invalid request origin.");
-  }
-  return next();
-});
+app.use(validateJsonRequest);
 app.use(router);
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  const detail = error instanceof Error ? error.message : "Unknown server error";
-  console.error("API request failed", detail);
+  const type = error && typeof error === "object" && "type" in error ? error.type : null;
+  if (type === "entity.too.large") return message(res, 413, "The request is too large.");
+  if (type === "entity.parse.failed") return message(res, 400, "Invalid JSON request.");
+  if (error && typeof error === "object" && "code" in error && error.code === 11000) return message(res, 409, "That record already exists. Reload before trying again.");
+  // Driver errors can include raw queries, names, and connection details.
+  console.error("API request failed", error instanceof Error ? error.name : "UnknownError");
   return message(res, 500, "The server could not complete this request.");
 });

@@ -10,7 +10,7 @@ import { SidebarNavigation } from "@/Client/views/components/sidebar-navigation"
 export function AppShell({ user, title, eyebrow, children, contentClassName = "" }: {
   user: AppUser; title: string; eyebrow: string; children: React.ReactNode; contentClassName?: string;
 }) {
-  const description = title === "Operation Timbang" ? "" : title === "Administration" ? "Your people and communities, in one workspace." : title === "Child records" ? "A clear record of every child in your care." : title === "Notifications" ? "Review recent age updates for children in your care." : "Keep each child’s details complete and up to date.";
+  const description = title === "Operation Timbang" ? "Record weight, height, and MUAC for children in your assigned communities." : title === "Administration" ? "Your people and communities, in one workspace." : title === "Child records" ? "A clear record of every child in your care." : title === "Notifications" ? "Review recent age updates for children in your care." : "Keep each child’s details complete and up to date.";
   return <div className="app-shell">
     <a className="skip-link" href="#workspace-title">Skip to content</a>
     <OfflineSession role={user.role} />

@@ -21,11 +21,15 @@ export async function getDb(): Promise<Db> {
     database.collection("puroks").createIndex({ barangay_id: 1, name: 1 }, { unique: true }),
     database.collection("children").createIndex({ id: 1 }, { unique: true }),
     database.collection("children").createIndex({ barangay_id: 1, purok_id: 1, name: 1 }),
+    database.collection("operation_timbang").createIndex({ id: 1 }, { unique: true }),
+    database.collection("operation_timbang").createIndex({ barangay_id: 1, purok_id: 1, name: 1 }),
     database.collection("sessions").createIndex({ token_hash: 1 }, { unique: true }),
     database.collection("sessions").createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 }),
     database.collection("assignments").createIndex({ user_id: 1, barangay_id: 1 }, { unique: true }),
     database.collection("purok_assignments").createIndex({ user_id: 1, purok_id: 1 }, { unique: true }),
     database.collection("login_attempts").createIndex({ username: 1 }, { unique: true }),
+    database.collection("login_attempts").createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 }),
+    database.collection("security_limits").createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 }),
   ]);
   return database;
 }
