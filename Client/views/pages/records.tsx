@@ -11,12 +11,13 @@ import { AutomaticWorkerRecords } from "@/Client/views/components/automatic-work
 
 export const dynamic = "force-dynamic";
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ q?: string; barangay?: string; purok?: string; message?: string; feedbackError?: string; feedbackId?: string }> }) {
+export default async function Home({ searchParams }: { searchParams: Promise<{ q?: string; barangay?: string; purok?: string; age?: string; message?: string; feedbackError?: string; feedbackId?: string }> }) {
   const user = await requireUser();
   const params = await searchParams;
   const q = typeof params.q === "string" ? params.q.slice(0, 80) : "";
   const barangay = typeof params.barangay === "string" ? params.barangay : "";
   const purok = typeof params.purok === "string" ? params.purok : "";
+  const age = params.age === "under-5" || params.age === "over-60" ? params.age : "";
   const [barangays, puroks, sitios, children] = await Promise.all([
     listBarangays(user),
     listPuroks(user),
@@ -27,7 +28,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
   return <AppShell user={user} title="Child records" eyebrow="Community health registry">
     {user.role === "bhw" && <AutomaticWorkerRecords snapshot={{ user: { id: user.id, username: user.username, display_name: user.display_name }, children, barangays, puroks, savedAt: new Date().toISOString() }} />}
     <FeedbackDialog message={params.message} isError={params.feedbackError === "1"} feedbackId={params.feedbackId} />
-    <ChildRegistry key={children.map((child) => `${child.id}:${child.updated_at}`).join(",")} records={children} barangays={barangays} puroks={puroks} sitios={sitios} today={today} initialQuery={q} initialBarangayId={barangay} initialPurokId={purok}>
+    <ChildRegistry key={children.map((child) => `${child.id}:${child.updated_at}`).join(",")} records={children} barangays={barangays} puroks={puroks} sitios={sitios} today={today} initialQuery={q} initialBarangayId={barangay} initialPurokId={purok} initialAgeFilter={age}>
       <section className="panel form-panel"><p className="eyebrow">New record</p><h2>Add a child</h2><p className="muted">Keep names and birthdays accurate for monthly reporting.</p>
         {barangays.length ? <form action={saveChild} className="form-stack" data-offline-draft-form>
           <div className="field"><label htmlFor="name">Child&apos;s name</label><input id="name" name="name" maxLength={120} required /></div>
