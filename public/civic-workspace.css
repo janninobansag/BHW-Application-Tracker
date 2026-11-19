@@ -32,6 +32,13 @@ button, input, select { font: inherit; }
 .field input, .field select, .account-control input, .account-control select, .reset-form input { min-height: 44px; border: 1px solid #aab9ae; border-radius: 4px; background: #fff; color: #233e34; font-size: .9rem; padding: 10px 12px; }
 input::placeholder { color: #697c71; opacity: 1; }
 .field input:focus, .field select:focus, .account-control input:focus, .account-control select:focus { border-color: #185c4c; }
+.birthday-input-control { display: grid; grid-template-columns: minmax(0, 1fr) 48px; align-items: center; gap: 8px; }
+.birthday-input-control > input[type="text"] { width: 100%; min-width: 0; font-variant-numeric: tabular-nums; }
+.birthday-calendar-control { position: relative; display: grid; place-items: center; width: 48px; min-height: 48px; border: 1px solid #aab9ae; border-radius: 4px; background: #fff; color: #476458; }
+.birthday-calendar-icon { display: grid; place-items: center; pointer-events: none; }
+.birthday-calendar-icon svg { width: 19px; height: 19px; stroke-width: 1.8; }
+.field .birthday-calendar-control .birthday-calendar-native { position: absolute; inset: 0; z-index: 1; width: 100% !important; height: 100% !important; min-height: 48px !important; padding: 0 !important; border: 0 !important; border-radius: inherit; background: transparent !important; color: transparent; opacity: 0; cursor: pointer; }
+.birthday-calendar-control:focus-within { outline: 3px solid #d9eee6; outline-offset: 2px; border-color: #185c4c; }
 .field-hint { font-size: .76rem; line-height: 1.6; }
 .password-input-wrap > .password-input { padding-right: 48px; }
 .password-visibility-toggle { min-width: 40px; min-height: 40px; right: 2px; }
