@@ -7,6 +7,7 @@ import { ChildRecordsTable } from "@/Client/views/components/child-records-table
 import { ExportExcelDialog } from "@/Client/views/components/export-excel-dialog";
 import { Plus, SearchX } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/Client/shared/components/ui/dialog";
+import { ageInMonths } from "@/Services/child-records";
 
 export function ChildRegistry({
   records,
@@ -17,6 +18,7 @@ export function ChildRegistry({
   initialQuery,
   initialBarangayId,
   initialPurokId,
+  initialAgeFilter,
   children,
 }: {
   records: Child[];
@@ -27,18 +29,21 @@ export function ChildRegistry({
   initialQuery: string;
   initialBarangayId: string;
   initialPurokId: string;
+  initialAgeFilter: string;
   children: ReactNode;
 }) {
   const [query, setQuery] = useState(initialQuery);
   const [barangayId, setBarangayId] = useState(initialBarangayId);
   const [purokId, setPurokId] = useState(initialPurokId);
+  const [ageFilter, setAgeFilter] = useState(initialAgeFilter);
   const [showNewRecord, setShowNewRecord] = useState(false);
   const [announcedCount, setAnnouncedCount] = useState(records.length);
   const normalizedQuery = query.trim().toLowerCase();
   const visibleRecords = records.filter((record) =>
     (!normalizedQuery || record.name.toLowerCase().includes(normalizedQuery) || record.parents.toLowerCase().includes(normalizedQuery))
     && (!barangayId || record.barangay_id === barangayId)
-    && (!purokId || record.purok_id === purokId),
+    && (!purokId || record.purok_id === purokId)
+    && (!ageFilter || (ageFilter === "under-5" ? ageInMonths(record.birthday, today) < 5 : ageFilter === "over-60" ? ageInMonths(record.birthday, today) > 60 : true)),
   );
   const male = visibleRecords.filter((record) => record.sex === "M").length;
   const female = visibleRecords.filter((record) => record.sex === "F").length;
@@ -50,25 +55,27 @@ export function ChildRegistry({
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    ["q", "barangay", "purok"].forEach((key) => params.delete(key));
+    ["q", "barangay", "purok", "age"].forEach((key) => params.delete(key));
     if (query) params.set("q", query);
     if (barangayId) params.set("barangay", barangayId);
     if (purokId) params.set("purok", purokId);
+    if (ageFilter) params.set("age", ageFilter);
     const nextUrl = `${window.location.pathname}${params.size ? `?${params.toString()}` : ""}${window.location.hash}`;
     if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== nextUrl) {
       window.history.replaceState(window.history.state, "", nextUrl);
     }
-  }, [barangayId, purokId, query]);
+  }, [ageFilter, barangayId, purokId, query]);
 
   const returnParams = new URLSearchParams();
   if (query) returnParams.set("q", query);
   if (barangayId) returnParams.set("barangay", barangayId);
   if (purokId) returnParams.set("purok", purokId);
+  if (ageFilter) returnParams.set("age", ageFilter);
   const returnTo = returnParams.size ? `/?${returnParams.toString()}` : "/";
 
   return <Dialog open={showNewRecord} onOpenChange={setShowNewRecord}>
     <div className="stats-grid" aria-label="Record totals">
-      <div className="stat"><span>Total children</span><strong>{visibleRecords.length}</strong><small>{query || barangayId || purokId ? "Matching your filters" : "In your registry"}</small></div>
+      <div className="stat"><span>Total children</span><strong>{visibleRecords.length}</strong><small>{query || barangayId || purokId || ageFilter ? "Matching your filters" : "In your registry"}</small></div>
       <div className="stat"><span>Male</span><strong>{male}</strong><small>Recorded as M</small></div>
       <div className="stat"><span>Female</span><strong>{female}</strong><small>Recorded as F</small></div>
     </div>
@@ -81,13 +88,14 @@ export function ChildRegistry({
           query={query}
           barangayId={barangayId}
           purokId={purokId}
+          ageFilter={ageFilter}
           onQueryChange={setQuery}
           onBarangayChange={(value) => { setBarangayId(value); setPurokId(""); }}
           onPurokChange={setPurokId}
+          onAgeFilterChange={setAgeFilter}
         />
-        <p className="registry-result-count">{visibleRecords.length} {visibleRecords.length === 1 ? "child" : "children"}{query || barangayId || purokId ? " matching your search and filters" : " in your care"}</p>
         <span className="sr-only" role="status">{announcedCount} matching records</span>
-        {visibleRecords.length ? <ChildRecordsTable key={`${query}:${barangayId}:${purokId}`} records={visibleRecords} today={today} returnTo={returnTo} /> : <div className="empty-state"><SearchX aria-hidden="true" /><h3>{records.length ? "No matching records" : "Your registry starts here"}</h3><p>{query || barangayId || purokId ? "Try a different name or clear your location filters." : "Add a child to start building your community’s health records."}</p><button className="secondary-button" type="button" onClick={() => { if (query || barangayId || purokId) { setQuery(""); setBarangayId(""); setPurokId(""); } else setShowNewRecord(true); }}>{query || barangayId || purokId ? "Clear search and filters" : "Add your first child"}</button></div>}
+        {visibleRecords.length ? <ChildRecordsTable key={`${query}:${barangayId}:${purokId}:${ageFilter}`} records={visibleRecords} today={today} returnTo={returnTo} /> : <div className="empty-state"><SearchX aria-hidden="true" /><h3>{records.length ? "No matching records" : "Your registry starts here"}</h3><p>{query || barangayId || purokId || ageFilter ? "Try a different name or clear your search and filters." : "Add a child to start building your community’s health records."}</p><button className="secondary-button" type="button" onClick={() => { if (query || barangayId || purokId || ageFilter) { setQuery(""); setBarangayId(""); setPurokId(""); setAgeFilter(""); } else setShowNewRecord(true); }}>{query || barangayId || purokId || ageFilter ? "Clear search and filters" : "Add your first child"}</button></div>}
         <p className="table-note">Age is calculated in full months as of {new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric", year: "numeric", timeZone: "Asia/Manila" }).format(new Date(`${today}T00:00:00+08:00`))}.</p>
       </section>
     </div>
