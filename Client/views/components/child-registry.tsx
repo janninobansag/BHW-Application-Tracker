@@ -82,7 +82,7 @@ export function ChildRegistry({
       <div className="stat"><span>Male</span><strong>{male}</strong><small>Recorded as M</small></div>
       <div className="stat"><span>Female</span><strong>{female}</strong><small>Recorded as F</small></div>
     </div>
-    <div className="workspace-grid registry-workspace registry-workspace-online">
+    <div className={`workspace-grid registry-workspace registry-workspace-online${program === "timbang" ? " timbang-registry" : ""}`}>
       <section className="panel record-panel">
         <div className="section-heading"><div><p className="eyebrow">Your registry</p><h2>{program === "timbang" ? "Operation Timbang records" : "Child records"} <span className="registry-total-badge">{records.length}</span></h2></div><div className="registry-heading-actions"><ExportExcelDialog barangays={barangays} puroks={puroks} sitios={sitios} program={program} /><DialogTrigger asChild><button type="button" className="primary-button registry-add-record"><Plus aria-hidden="true" />Add child</button></DialogTrigger></div></div>
         <ChildRecordFilters
@@ -102,6 +102,6 @@ export function ChildRegistry({
         <p className="table-note">Age is calculated in full months as of {new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric", year: "numeric", timeZone: "Asia/Manila" }).format(new Date(`${today}T00:00:00+08:00`))}.</p>
       </section>
     </div>
-    <DialogContent className="new-record-dialog"><DialogHeader><p className="eyebrow">New registry entry</p><DialogTitle>{program === "timbang" ? "Add Operation Timbang record" : "Add a child"}</DialogTitle><DialogDescription>{program === "timbang" ? "Enter the child’s details, community, and available body measurements." : "Enter the child’s details and assigned community. All fields are required."}</DialogDescription></DialogHeader>{children}</DialogContent>
+    <DialogContent className={`new-record-dialog${program === "timbang" ? " timbang-record-dialog" : ""}`}><DialogHeader><p className="eyebrow">New registry entry</p><DialogTitle>{program === "timbang" ? "Add Operation Timbang record" : "Add a child"}</DialogTitle><DialogDescription>{program === "timbang" ? "Add the child’s details and community. Measurements can be completed later." : "Enter the child’s details and assigned community. All fields are required."}</DialogDescription></DialogHeader>{children}</DialogContent>
   </Dialog>;
 }

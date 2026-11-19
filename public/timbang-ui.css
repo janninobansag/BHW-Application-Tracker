@@ -6,37 +6,85 @@
 .timbang-table .record-child { min-width: 190px; }
 .timbang-table .record-parents, .timbang-table .record-location { min-width: 150px; }
 .timbang-table :is(.timbang-number, .timbang-value) { text-align: center; font-variant-numeric: tabular-nums; }
-.timbang-value .muted { font-size: .72rem; }
+.timbang-measurement-label, .timbang-unit, .timbang-sex-label, .timbang-age-label { display: none; }
+.timbang-unmeasured { color: var(--civic-muted); }
+.timbang-child-fields { display: grid; grid-column: 1 / -1; grid-template-columns: 1fr 1fr; gap: 20px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.timbang-child-fields > legend { margin: 0; padding: 0 0 16px; color: var(--civic-ink); font-size: .9rem; font-weight: 650; }
+.timbang-child-fields > .field:first-of-type, .timbang-child-fields > .field:last-child { grid-column: 1 / -1; }
 .timbang-measurements { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .timbang-measurements > .field-hint { grid-column: 1 / -1; margin: 0; }
 .new-record-dialog .timbang-measurements { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.timbang-measurements input { min-width: 0; width: 100%; }
+.timbang-measurements input { min-width: 0; width: 100%; font-variant-numeric: tabular-nums; }
 @container timbang (width < 1000px) {
   .timbang-table table, .timbang-table tbody { display: block; width: 100%; min-width: 0; }
   .timbang-table thead { display: none; }
-  .timbang-table tbody { padding: 0 16px; }
-  .timbang-table tr { position: relative; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; padding: 18px 0 0; border-top: 1px solid #dce3d6; background: #fff; }
-  .timbang-table tbody :is(td, th) { display: block; min-width: 0; padding: 0; border: 0; background: transparent; }
-  .timbang-table tbody .record-child { grid-column: 1 / -1; padding-right: 44px; }
+  .timbang-table tbody { display: grid; gap: 12px; padding: 14px; background: #f5f7f2; }
+  .timbang-table tbody tr { position: relative; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px 0; padding: 16px 14px 0; margin: 0; border: 1px solid var(--civic-line); border-radius: 4px; background: #fff; }
+  .timbang-table tbody :is(td, th) { display: block; min-width: 0; padding: 0; border: 0; background: transparent; font-size: .85rem; }
+  .timbang-table tbody tr:hover > :is(td, th) { background: transparent; }
+  .timbang-table tbody .record-child { grid-column: 1 / -1; padding: 0 44px 0 0; }
+  .timbang-table .record-child strong { font-size: .96rem; line-height: 1.45; }
+  .timbang-table .record-child small { margin-top: 5px; font-size: .75rem; }
   .timbang-table .timbang-number { display: none; }
-  .timbang-table .record-age { grid-column: 1 / 4; }
-  .timbang-table .record-sex { grid-column: 4 / -1; text-align: left; }
-  .timbang-table .timbang-value { grid-column: span 2; padding: 12px 8px; background: #f6f8f3; border: 1px solid #e3e8dc; border-radius: 3px; font-size: .95rem; text-align: left; }
-  .timbang-table td.timbang-value::before { content: attr(data-label); display: block; margin-bottom: 7px; color: #526953; font-size: .7rem; font-weight: 600; }
+  .timbang-table .record-age { display: flex; grid-column: 1 / 4; align-items: center; gap: 6px; min-height: 28px; font-size: .8rem; }
+  .timbang-table td.record-age::before { content: none; display: none; }
+  .timbang-table .timbang-age-label { display: inline; color: var(--civic-muted); font-size: .74rem; }
+  .timbang-table .record-sex { display: flex; grid-column: 4 / -1; align-items: center; justify-content: flex-end; gap: 6px; min-height: 28px; padding: 0; }
+  .timbang-table .timbang-sex-label { display: inline; color: var(--civic-muted); font-size: .75rem; }
+  .timbang-table .sex-pill { width: 24px; height: 24px; border-radius: 3px; font-size: .75rem; }
+  .timbang-table td.timbang-value { grid-column: span 2; align-self: stretch; padding: 12px 8px; background: #f5f7f3; border-block: 1px solid #e1e7dd; text-align: center; }
+  .timbang-table .timbang-value + .timbang-value { border-left: 1px solid #dce4d7; }
+  .timbang-table td.timbang-value::before { content: none; display: none; }
+  .timbang-table .timbang-measurement-label { display: block; margin-bottom: 7px; color: #526953; font-size: .72rem; line-height: 1.4; font-weight: 600; }
+  .timbang-table .timbang-measurement-number { display: flex; align-items: baseline; justify-content: center; flex-wrap: wrap; gap: 4px; font-size: 1.05rem; line-height: 1.35; font-weight: 650; color: #254831; }
+  .timbang-table .timbang-unit { display: inline; margin: 0; color: #61725e; font-size: .7rem; font-weight: 400; }
+  .timbang-table .timbang-unmeasured { display: block; min-height: 1.45rem; font-size: .72rem; line-height: 1.55; }
   .timbang-table .record-parents, .timbang-table .record-desktop-location { display: none; }
-  .timbang-table .record-location { grid-column: 1 / -1; margin: 0; border-top: 1px solid #edf0e8; }
+  .timbang-table td.record-location { grid-column: 1 / -1; min-width: 0; margin: 0; border: 0; }
   .timbang-table td.record-location::before { display: none; }
-  .timbang-table .record-actions-cell { position: absolute; top: 12px; right: -6px; width: 44px; padding: 0; }
-  .timbang-table .record-menu-trigger { width: 44px; height: 44px; }
+  .timbang-table .record-actions-cell { position: absolute; top: 8px; right: 8px; width: 44px; padding: 0; }
+  .timbang-table .record-menu-trigger { width: 44px; min-height: 44px; height: 44px; border: 1px solid #e0e6dd; border-radius: 4px; background: #fff; }
   .timbang-table .record-mobile-disclosure { display: block; }
-  .timbang-table .record-mobile-disclosure summary { display: flex; align-items: center; justify-content: space-between; min-height: 44px; list-style: none; cursor: pointer; color: #45664c; font-size: .76rem; font-weight: 600; }
+  .timbang-table .record-mobile-disclosure summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; list-style: none; cursor: pointer; color: #45664c; font-size: .78rem; font-weight: 600; }
+  .timbang-table .record-mobile-disclosure summary::-webkit-details-marker { display: none; }
   .timbang-table .record-mobile-disclosure summary::after { content: "+"; }
   .timbang-table .record-mobile-disclosure[open] summary::after { content: "-"; }
-  .timbang-table .record-mobile-disclosure dl { display: grid; gap: 14px; margin: 0; padding: 4px 0 18px; }
+  .timbang-table .record-mobile-disclosure dl { display: grid; gap: 14px; margin: 0; padding: 14px 0 18px; border-top: 1px solid #e7ebe2; }
   .timbang-table .record-mobile-disclosure dt { font-size: .7rem; color: #62745f; }
-  .timbang-table .record-mobile-disclosure dd { margin: 4px 0 0; font-size: .82rem; }
+  .timbang-table .record-mobile-disclosure dd { margin: 4px 0 0; font-size: .84rem; line-height: 1.6; overflow-wrap: break-word; }
 }
-@media (max-width: 480px) {
-  .timbang-measurements, .new-record-dialog .timbang-measurements { grid-template-columns: 1fr; }
+@media (max-width: 760px) {
+  .timbang-content .page-heading { margin-bottom: 16px; }
+  .timbang-content .page-heading h1 { font-size: clamp(1.65rem, 7vw, 1.9rem); }
+  .timbang-content .page-description { max-width: 39ch; font-size: .81rem; }
+  .timbang-content .stats-grid { margin-bottom: 18px; }
+  .timbang-content .stats-grid .stat { min-height: 86px; }
+  .timbang-registry .record-panel > .section-heading { padding: 18px 14px 14px; gap: 14px; }
+  .timbang-registry .record-panel .section-heading h2 { flex-wrap: wrap; gap: 7px; font-size: 1rem; line-height: 1.4; text-wrap: initial; }
+  .timbang-registry .registry-heading-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .timbang-registry .registry-heading-actions > button { flex: 1; min-width: 116px; min-height: 48px; font-size: .82rem; }
+  .timbang-registry .registry-heading-actions .registry-export-button, .timbang-registry .registry-add-record { flex: 1 1 0; width: auto; }
+  .timbang-registry .registry-add-record { order: -1; }
+  .timbang-registry .registry-filters { padding: 14px; gap: 10px 8px; }
+  .timbang-registry .registry-filters .registry-search-input input { padding-right: 8px; }
+  .timbang-registry .registry-filter-locations { padding: 14px 0 0; border: 0; border-top: 1px solid var(--civic-line); border-radius: 0; background: transparent; }
+  .timbang-registry .registry-age-options { gap: 6px; }
+  .timbang-registry .registry-age-options label { background: #fff; }
+  .timbang-registry .records-pagination { gap: 10px; padding: 16px 14px; border-top: 1px solid var(--civic-line); }
+  .timbang-registry .records-pagination > span { text-align: center; }
+  .timbang-registry .records-pagination > div { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; }
+  .timbang-registry .records-pagination > div > span { grid-column: 2; grid-row: 1; padding-inline: 2px; }
+  .timbang-registry .records-pagination > div > button:first-of-type { grid-column: 1; grid-row: 1; }
+  .timbang-registry .records-pagination > div > button:last-of-type { grid-column: 3; grid-row: 1; }
+  .timbang-registry .records-pagination .secondary-button { min-height: 48px; min-width: 0; padding-inline: 8px; }
+  .timbang-record-dialog[data-slot="dialog-content"] { width: calc(100vw - 24px); max-width: 560px; max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); padding: 22px 18px; border-radius: 4px; overflow-y: auto; overscroll-behavior: contain; scroll-padding-block: 18px; }
+  .timbang-record-dialog [data-slot="dialog-title"] { font-size: 1.2rem; line-height: 1.35; text-wrap: balance; }
+  .timbang-record-dialog [data-slot="dialog-header"] { gap: 8px; padding-right: 28px; text-align: left; }
+  .timbang-record-dialog .timbang-record-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .timbang-record-dialog .timbang-child-fields { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .timbang-record-dialog .location-fieldset { padding: 16px 14px; border-radius: 4px; }
+  .timbang-measurements, .new-record-dialog .timbang-measurements { grid-template-columns: minmax(0, 1fr); }
+  .timbang-record-dialog .timbang-measurements > .field { grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 10px; }
+  .timbang-record-dialog .timbang-record-form > .primary-button { width: 100%; min-height: 48px; margin: 0; font-size: .86rem; }
   .timbang-measurements input { min-height: 48px; font-size: 1rem; }
 }

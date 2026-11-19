@@ -12,8 +12,11 @@ import { activeWorkerId, readWorkerContents as readContents, queueWorkerChild as
   const syncWorkerChanges = () => syncChangesForProgram(program);
   const measurementFields = ["weight", "height", "muac"];
   if (timbang) {
+    document.querySelector("main.content").classList.add("timbang-content");
+    document.querySelector(".registry-workspace").classList.add("timbang-registry");
     document.title = "Operation Timbang | BHW Records";
     $("workspace-title").textContent = "Operation Timbang";
+    document.querySelector(".page-heading .eyebrow").textContent = "Child growth monitoring";
     document.querySelector(".page-description").textContent = "Record weight, height, and MUAC for children in your assigned communities.";
     document.querySelector(".desktop-header-context strong").textContent = "Operation Timbang";
     document.querySelector("#registry h2").textContent = "Operation Timbang records";
@@ -166,7 +169,7 @@ import { activeWorkerId, readWorkerContents as readContents, queueWorkerChild as
     for (const child of records.slice(first, first + 8)) {
       const row = document.createElement("tr");
       const name = makeText("th", "record-child", ""); name.scope = "row";
-      name.append(makeText("strong", "", child.name), makeText("small", "", `Born ${child.birthday}`));
+      name.append(makeText("strong", "", child.name), makeText("small", "", `Born ${timbang ? child.birthday.split("-").slice(1).concat(child.birthday.split("-")[0]).join("/") : child.birthday}`));
       if (pendingIds.has(child.id)) name.append(makeText("small", "record-pending", "Waiting to sync"));
       const age = makeText("td", "record-age", `${ageInMonths(child.birthday)} months`); age.dataset.label = "Age";
       const sex = makeText("td", "record-sex", ""); sex.dataset.label = "Sex"; sex.append(makeText("span", `sex-pill ${child.sex === "F" ? "sex-pill-female" : "sex-pill-male"}`, child.sex));
@@ -176,7 +179,7 @@ import { activeWorkerId, readWorkerContents as readContents, queueWorkerChild as
       const desktopLocation = makeText("div", "record-desktop-location", "");
       desktopLocation.append(...location.childNodes);
       const disclosure = makeText("details", "record-mobile-disclosure", "");
-      disclosure.append(makeText("summary", "", "View details"));
+      disclosure.append(makeText("summary", "", timbang ? "Guardian and community" : "View details"));
       const details = document.createElement("dl");
       for (const [label, value] of [["Parent / guardian", child.parents], ["Barangay / Purok", `${child.barangay_name} / ${child.purok_name || "Purok not specified"}`], ["Health worker", child.bhw_names || contents.snapshot.user.display_name]]) {
         const item = document.createElement("div");
@@ -207,10 +210,21 @@ import { activeWorkerId, readWorkerContents as readContents, queueWorkerChild as
       });
       actions.append(trigger, menu); row.append(name, age, sex);
       if (timbang) {
+        const sexLabel = makeText("span", "timbang-sex-label", child.sex === "F" ? "Female" : "Male");
+        sexLabel.setAttribute("aria-hidden", "true"); sex.append(sexLabel);
+        age.prepend(makeText("span", "timbang-age-label", "Age"));
         const number = makeText("td", "timbang-number", String(first + list.children.length + 1)); row.prepend(number);
         measurementFields.forEach((field, index) => {
-          const cell = makeText("td", "timbang-value", child[field] === null || child[field] === undefined || child[field] === "" ? "Not measured" : String(child[field]));
-          cell.dataset.label = ["Weight (kg)", "Height (cm)", "MUAC (cm)"][index]; row.append(cell);
+          const cell = makeText("td", "timbang-value", "");
+          cell.dataset.label = ["Weight", "Height", "MUAC"][index];
+          cell.append(makeText("span", "timbang-measurement-label", cell.dataset.label));
+          if (child[field] === null || child[field] === undefined || child[field] === "") {
+            cell.append(makeText("span", "timbang-unmeasured", "Not measured"));
+          } else {
+            const value = makeText("span", "timbang-measurement-number", String(child[field]));
+            value.append(makeText("small", "timbang-unit", index === 0 ? "kg" : "cm")); cell.append(value);
+          }
+          row.append(cell);
         });
       }
       row.append(parents, location, actions); list.append(row);
