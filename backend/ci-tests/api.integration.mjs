@@ -96,7 +96,16 @@ test("authenticated worker CRUD, assignment access, and filtered Excel export", 
   });
   assert.equal(assign.status, 200);
 
-  const workerLogin = await login("integration.worker", "IntegrationWorker!2026");
+  let workerLogin = await login("integration.worker", "IntegrationWorker!2026");
+  assert.equal((await request("/api/auth/me", { cookie: workerLogin.cookie })).status, 200);
+  for (const path of ["/api/children", "/api/barangays", "/api/export/xlsx"]) {
+    assert.equal((await request(path, { cookie: workerLogin.cookie })).status, 403, "temporary passwords cannot be used to access any registry through the API");
+  }
+  const oldCookie = workerLogin.cookie;
+  const changePassword = await request("/api/auth/password", { method: "POST", cookie: oldCookie, body: { current: "IntegrationWorker!2026", next: "ChangedWorker!2026", confirm: "ChangedWorker!2026" } });
+  assert.equal(changePassword.status, 200);
+  assert.equal((await request("/api/auth/me", { cookie: oldCookie })).status, 401, "password changes invalidate previous sessions");
+  workerLogin = await login("integration.worker", "ChangedWorker!2026");
   const adminOnly = await request("/api/admin/users", { cookie: workerLogin.cookie });
   assert.equal(adminOnly.status, 403, "BHWs must not access admin account management");
 
@@ -115,6 +124,10 @@ test("authenticated worker CRUD, assignment access, and filtered Excel export", 
   assert.equal(createChild.status, 200);
   const created = (await createChild.json()).child;
   assert.equal(created.name, "Test Child");
+  for (const field of ["id", "barangayId", "purokId"]) {
+    const injected = await request("/api/children", { method: "POST", cookie: workerLogin.cookie, body: { name: "Injected", birthday: created.birthday, sex: "M", parents: "Guardian", barangayId: barangay.id, purokId: purok.id, [field]: { $ne: null } } });
+    assert.equal(injected.status, 400, "query operators must never reach record lookups");
+  }
 
   const listed = await request(`/api/children?barangay=${encodeURIComponent(barangay.id)}&purok=${encodeURIComponent(purok.id)}&q=Test%20Child`, { cookie: workerLogin.cookie });
   assert.equal(listed.status, 200);
@@ -227,4 +240,18 @@ test("authenticated worker CRUD, assignment access, and filtered Excel export", 
   assert.equal(repeatedOfflineDelete.status, 200, "replaying a deletion after a lost response must succeed");
   const afterDelete = await request(`/api/children?q=Updated%20Test%20Child`, { cookie: workerLogin.cookie });
   assert.deepEqual((await afterDelete.json()).children, []);
+
+  const { consumeLimit } = await import("../src/request-security.ts");
+  const parallelLimits = await Promise.all(Array.from({ length: 12 }, () => consumeLimit("test", "parallel", 5, 60_000)));
+  assert.equal(parallelLimits.filter((retry) => retry === 0).length, 5, "concurrent requests share an atomic database counter");
+  const failures = await Promise.all(Array.from({ length: 5 }, () => request("/api/auth/login", { method: "POST", body: { username: "unknown.worker", password: "InvalidPassword!2026" } })));
+  assert.ok(failures.every((response) => [401, 429].includes(response.status)));
+  const locked = await request("/api/auth/login", { method: "POST", body: { username: "unknown.worker", password: "InvalidPassword!2026" } });
+  assert.equal(locked.status, 429);
+  assert.ok(Number(locked.headers.get("retry-after")) > 0);
+  const throttleRecord = await database.collection("login_attempts").findOne({ username: "unknown.worker" });
+  assert.ok(throttleRecord.expires_at instanceof Date, "failed login records expire automatically");
+
+  assert.equal((await request(`/api/admin/users/${worker.id}/active`, { method: "PUT", cookie: admin.cookie, body: { active: false } })).status, 200);
+  assert.equal((await request("/api/auth/me", { cookie: workerLogin.cookie })).status, 401, "deactivated workers lose their server session");
 });

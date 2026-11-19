@@ -13,7 +13,13 @@ export async function assertSameOrigin(): Promise<void> {
   const requestHeaders = await headers();
   const origin = requestHeaders.get("origin");
   const host = requestHeaders.get("host");
-  if (!origin || !host || new URL(origin).host !== host) throw new Error("Invalid request origin");
+  const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
+  let valid = false;
+  try {
+    const parsed = new URL(origin || "");
+    valid = !!host && parsed.origin === `${protocol}://${host}` && !parsed.username && !parsed.password && parsed.pathname === "/" && !parsed.search && !parsed.hash;
+  } catch { /* Invalid and opaque origins are rejected. */ }
+  if (!valid) throw new Error("Invalid request origin");
 }
 
 export async function getCurrentUser(): Promise<AppUser | null> {
