@@ -1,4 +1,4 @@
-const CACHE_NAME = "bhw-pwa-shell-v14";
+const CACHE_NAME = "bhw-pwa-shell-v15";
 const APP_SHELL = [
   "/offline.html",
   "/offline.js",
