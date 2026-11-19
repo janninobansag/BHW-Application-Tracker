@@ -26,4 +26,10 @@ export type Child = {
   updated_at?: string;
 };
 
+export type TimbangRecord = Child & {
+  weight: number | null;
+  height: number | null;
+  muac: number | null;
+};
+
 export type ManagedUser = AppUser & { assigned_ids: string | null; assigned_purok_ids: string | null };

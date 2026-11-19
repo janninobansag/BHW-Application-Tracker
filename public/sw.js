@@ -1,4 +1,4 @@
-const CACHE_NAME = "bhw-pwa-shell-v15";
+const CACHE_NAME = "bhw-pwa-shell-v16";
 const APP_SHELL = [
   "/offline.html",
   "/offline.js",
@@ -6,6 +6,7 @@ const APP_SHELL = [
   "/records-ui.css",
   "/civic-workspace.css",
   "/offline-ui.css",
+  "/timbang-ui.css",
   "/online-required.html",
   "/manifest.webmanifest",
   "/favicon-bhw.png",
@@ -50,8 +51,11 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith("/api/")) return;
 
   if (request.mode === "navigate") {
-    const workerPage = url.pathname === "/" || url.pathname.startsWith("/records/") || url.pathname === "/offline.html";
-    const fallback = async () => (await caches.match(workerPage ? "/offline.html" : "/online-required.html")) || Response.error();
+    const workerPage = url.pathname === "/" || url.pathname.startsWith("/records/") || url.pathname === "/offline.html" || url.pathname === "/operation-timbang" || url.pathname.startsWith("/operation-timbang/");
+    const fallback = async () => {
+      if (url.pathname.startsWith("/operation-timbang")) return Response.redirect(`${url.origin}/offline.html?program=timbang`, 302);
+      return (await caches.match(workerPage ? "/offline.html" : "/online-required.html")) || Response.error();
+    };
     event.respondWith(
       fetch(request).then((response) => response.status >= 500 ? fallback() : response).catch(fallback),
     );

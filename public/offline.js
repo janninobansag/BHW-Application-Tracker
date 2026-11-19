@@ -1,7 +1,41 @@
-import { activeWorkerId, readWorkerContents, queueWorkerChild, queueWorkerDelete, changeWorkerContents, syncWorkerChanges } from "/worker-offline-store.js";
+import { activeWorkerId, readWorkerContents as readContents, queueWorkerChild as queueChild, queueWorkerDelete as queueDelete, changeWorkerContents as changeContents, syncWorkerChanges as syncChangesForProgram } from "/worker-offline-store.js";
 
 (() => {
   const $ = (id) => document.getElementById(id);
+  const timbang = new URLSearchParams(location.search).get("program") === "timbang";
+  const program = timbang ? "timbang" : "deworming";
+  const onlinePath = timbang ? "/operation-timbang" : "/";
+  const readWorkerContents = () => readContents(program);
+  const queueWorkerChild = (child, id, version) => queueChild(child, id, version, program);
+  const queueWorkerDelete = (id, version) => queueDelete(id, version, program);
+  const changeWorkerContents = (operation) => changeContents(operation, program);
+  const syncWorkerChanges = () => syncChangesForProgram(program);
+  const measurementFields = ["weight", "height", "muac"];
+  if (timbang) {
+    document.title = "Operation Timbang | BHW Records";
+    $("workspace-title").textContent = "Operation Timbang";
+    document.querySelector(".page-description").textContent = "Record weight, height, and MUAC for children in your assigned communities.";
+    document.querySelector(".desktop-header-context strong").textContent = "Operation Timbang";
+    document.querySelector("#registry h2").textContent = "Operation Timbang records";
+    document.querySelector(".side-nav a").textContent = "Operation Timbang";
+    document.querySelector(".mobile-header-links a").setAttribute("aria-label", "Operation Timbang");
+    document.querySelector(".registry-table").classList.add("timbang-table");
+    const header = document.querySelector(".registry-table thead tr");
+    const no = document.createElement("th"); no.scope = "col"; no.textContent = "No."; header.prepend(no);
+    for (const label of ["Weight (kg)", "Height (cm)", "MUAC (cm)"]) {
+      const cell = document.createElement("th"); cell.scope = "col"; cell.textContent = label; header.insertBefore(cell, header.children[header.children.length - 3]);
+    }
+    const fields = document.createElement("fieldset"); fields.className = "location-fieldset timbang-measurements";
+    const legend = document.createElement("legend"); legend.textContent = "Body measurements"; fields.append(legend);
+    measurementFields.forEach((name, index) => {
+      const group = document.createElement("div"); group.className = "field";
+      const label = document.createElement("label"); label.htmlFor = `child-${name}`; label.textContent = ["Weight (kg)", "Height (cm)", "MUAC (cm)"][index];
+      const input = document.createElement("input"); input.id = `child-${name}`; input.name = name; input.type = "number"; input.inputMode = "decimal"; input.min = "0.01"; input.max = "1000"; input.step = "0.01";
+      group.append(label, input); fields.append(group);
+    });
+    $("child-form").insertBefore(fields, document.querySelector("#child-form .location-fieldset"));
+  }
+  document.querySelector(".side-nav").append(Object.assign(document.createElement("a"), { href: timbang ? "/offline.html" : "/offline.html?program=timbang", textContent: timbang ? "Vitamin A and Deworming" : "Operation Timbang" }));
   let contents = null;
   let busy = false;
   let saving = false;
@@ -67,6 +101,7 @@ import { activeWorkerId, readWorkerContents, queueWorkerChild, queueWorkerDelete
         purok_id: pending.child.purokId,
         purok_name: purok?.name || "",
         updated_at: pending.expectedUpdatedAt,
+        ...(timbang ? { weight: pending.child.weight, height: pending.child.height, muac: pending.child.muac } : {}),
       });
     }
     return [...records.values()].sort((a, b) => a.name.localeCompare(b.name));
@@ -170,7 +205,15 @@ import { activeWorkerId, readWorkerContents, queueWorkerChild, queueWorkerDelete
         trigger.setAttribute("aria-expanded", String(menu.showPopover ? menu.matches(":popover-open") : !menu.hidden));
         edit.focus();
       });
-      actions.append(trigger, menu); row.append(name, age, sex, parents, location, actions); list.append(row);
+      actions.append(trigger, menu); row.append(name, age, sex);
+      if (timbang) {
+        const number = makeText("td", "timbang-number", String(first + list.children.length + 1)); row.prepend(number);
+        measurementFields.forEach((field, index) => {
+          const cell = makeText("td", "timbang-value", child[field] === null || child[field] === undefined || child[field] === "" ? "Not measured" : String(child[field]));
+          cell.dataset.label = ["Weight (kg)", "Height (cm)", "MUAC (cm)"][index]; row.append(cell);
+        });
+      }
+      row.append(parents, location, actions); list.append(row);
     }
     $("empty-records").hidden = records.length !== 0;
     $("page-summary").textContent = `Showing ${records.length ? first + 1 : 0} to ${Math.min(first + 8, records.length)} of ${records.length} records`;
@@ -215,6 +258,7 @@ import { activeWorkerId, readWorkerContents, queueWorkerChild, queueWorkerDelete
     updateBirthdayHint();
     $("child-sex").value = child?.sex || "";
     $("child-parents").value = child?.parents || "";
+    if (timbang) measurementFields.forEach((field) => { $(`child-${field}`).value = child?.[field] ?? ""; });
     $("child-barangay").replaceChildren(new Option("Select a barangay", ""));
     for (const item of contents.snapshot.barangays) $("child-barangay").add(new Option(item.name, item.id));
     $("child-barangay").value = child?.barangay_id || "";
@@ -253,6 +297,7 @@ import { activeWorkerId, readWorkerContents, queueWorkerChild, queueWorkerDelete
       parents: $("child-parents").value.trim(),
       barangayId: $("child-barangay").value,
       purokId: $("child-purok").value,
+      ...(timbang ? Object.fromEntries(measurementFields.map((field) => [field, $(`child-${field}`).value])) : {}),
     };
     const problem = validateChild(child);
     if (problem) return setNotice($("workspace-message"), problem, "error");
@@ -285,22 +330,22 @@ import { activeWorkerId, readWorkerContents, queueWorkerChild, queueWorkerDelete
       const refreshed = await syncWorkerChanges();
       if (!refreshed || activeWorkerId() !== openedUserId) return closeWorkspace();
       contents = refreshed;
-      if (!["child-name", "child-birthday", "child-parents", "record-id", "child-sex", "child-barangay", "child-purok"].some((id) => $(id).value)) renderLookups();
+      if (!["child-name", "child-birthday", "child-parents", "record-id", "child-sex", "child-barangay", "child-purok", ...(timbang ? measurementFields.map((field) => `child-${field}`) : [])].some((id) => $(id).value)) renderLookups();
       renderRecords();
       if (contents.conflicts.length) setNotice($("workspace-message"), "Some records changed online. Review the versions below before syncing those changes.", "error");
       else setNotice($("workspace-message"), "");
       setConnection();
-      const editing = ["child-name", "child-birthday", "child-parents", "record-id", "child-sex", "child-barangay", "child-purok"].some((id) => $(id).value);
+      const editing = ["child-name", "child-birthday", "child-parents", "record-id", "child-sex", "child-barangay", "child-purok", ...(timbang ? measurementFields.map((field) => `child-${field}`) : [])].some((id) => $(id).value);
       if (!contents.pending.length && !contents.draft && !editing && !document.querySelector("dialog[open]")) {
         // Verify that the full page is available before leaving the working cache.
-        const onlinePage = await fetch("/", { cache: "no-store", signal: AbortSignal.timeout(10000) });
-        const stillEditing = ["child-name", "child-birthday", "child-parents", "record-id", "child-sex", "child-barangay", "child-purok"].some((id) => $(id).value);
+        const onlinePage = await fetch(onlinePath, { cache: "no-store", signal: AbortSignal.timeout(10000) });
+        const stillEditing = ["child-name", "child-birthday", "child-parents", "record-id", "child-sex", "child-barangay", "child-purok", ...(timbang ? measurementFields.map((field) => `child-${field}`) : [])].some((id) => $(id).value);
         if (onlinePage.ok && !stillEditing && !document.querySelector("dialog[open]")) {
           const params = new URLSearchParams();
           if ($("record-search").value) params.set("q", $("record-search").value);
           if ($("filter-barangay").value) params.set("barangay", $("filter-barangay").value);
           if ($("filter-purok").value) params.set("purok", $("filter-purok").value);
-          window.location.replace(`/${params.size ? `?${params}` : ""}`);
+          window.location.replace(`${onlinePath}${params.size ? `?${params}` : ""}`);
         }
       }
     } catch (error) {
@@ -351,11 +396,12 @@ import { activeWorkerId, readWorkerContents, queueWorkerChild, queueWorkerDelete
         ? `The online record was updated at ${new Date(conflict.remote.updated_at || conflict.detectedAt).toLocaleString()}. Your offline edit is still saved.`
         : "The online record is no longer available to your account. Your offline edit is still saved."));
       if (conflict.remote) {
+        const measurementText = (value) => timbang ? `, Weight: ${value.weight ?? "Not measured"} kg, Height: ${value.height ?? "Not measured"} cm, MUAC: ${value.muac ?? "Not measured"} cm` : "";
         const remote = document.createElement("p");
-        remote.textContent = `Online: ${conflict.remote.name}, ${conflict.remote.birthday}, ${conflict.remote.sex}, ${conflict.remote.parents}`;
+        remote.textContent = `Online: ${conflict.remote.name}, ${conflict.remote.birthday}, ${conflict.remote.sex}, ${conflict.remote.parents}${measurementText(conflict.remote)}`;
         card.append(remote);
         const local = document.createElement("p");
-        local.textContent = `This device: ${pending.child.name}, ${pending.child.birthday}, ${pending.child.sex}, ${pending.child.parents}`;
+        local.textContent = `This device: ${pending.child.name}, ${pending.child.birthday}, ${pending.child.sex}, ${pending.child.parents}${measurementText(pending.child)}`;
         card.append(local);
       }
       const actions = document.createElement("div");
@@ -387,7 +433,7 @@ import { activeWorkerId, readWorkerContents, queueWorkerChild, queueWorkerDelete
   async function openWorkspace() {
     try {
       contents = await readWorkerContents();
-      if (!contents) throw new Error("Sign in as a worker while online once on this device. Offline access will then be prepared automatically.");
+      if (!contents) throw new Error(timbang ? "Open Operation Timbang while signed in online once on this device to prepare its separate offline list." : "Sign in as a worker while online once on this device. Offline access will then be prepared automatically.");
       openedUserId = contents.snapshot.user.id;
       $("access-panel").hidden = true;
       $("workspace").hidden = false;
@@ -405,7 +451,7 @@ import { activeWorkerId, readWorkerContents, queueWorkerChild, queueWorkerDelete
       openEditor(null, false);
       if (contents.draft) {
         const { id, child, updatedAt } = contents.draft;
-        openEditor({ id, updated_at: updatedAt, name: child.name, birthday: child.birthday, sex: child.sex, parents: child.parents, barangay_id: child.barangayId, purok_id: child.purokId });
+        openEditor({ id, updated_at: updatedAt, name: child.name, birthday: child.birthday, sex: child.sex, parents: child.parents, barangay_id: child.barangayId, purok_id: child.purokId, ...(timbang ? { weight: child.weight, height: child.height, muac: child.muac } : {}) });
         $("editor-title").textContent = id ? "Edit child record" : "Add a child";
         setNotice($("workspace-message"), "Your unfinished form was kept when the connection changed. Continue filling it in, then save.");
       }
@@ -456,7 +502,7 @@ import { activeWorkerId, readWorkerContents, queueWorkerChild, queueWorkerDelete
   $("account-button").addEventListener("click", () => $("account-dialog").showModal());
   $("export-button").addEventListener("click", () => {
     if (["child-name", "child-birthday", "child-parents", "record-id"].some((id) => $(id).value)) return showFeedback("Save or cancel your current record before returning to the online registry for Excel export.");
-    if (navigator.onLine) window.location.assign(new URL("/", window.location.origin).href);
+    if (navigator.onLine) window.location.assign(new URL(onlinePath, window.location.origin).href);
   });
   $("new-record-button").addEventListener("click", () => {
     const open = $("registry-grid").classList.toggle("show-new-record");
