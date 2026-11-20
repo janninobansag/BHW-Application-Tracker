@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { strFromU8, unzipSync } from "fflate";
 import { makeWorkbook } from "../src/workbook.ts";
 import { makePrintReport } from "../src/print-report.ts";
+import { REPORT_FONT_SIZES, REPORT_PAGE_MARGINS, REPORT_ROW_HEIGHTS } from "../src/report-layout.ts";
 import { PDFDocument, PrintScaling } from "pdf-lib";
 import { parseMeasurements } from "../src/timbang.ts";
 
@@ -92,6 +93,33 @@ test("merged table headers have complete borders without internal dividing lines
   assert.match(borders[5], /<left\/>/);
 });
 
+test("both Excel forms use larger text and taller rows without shrinking names", () => {
+  const heading = { barangay: "Tulay", sitio: "Springwoods", purok: "Hermit Crab", bhw: "Test worker" };
+  for (const program of ["deworming", "timbang"]) {
+    const row = program === "timbang"
+      ? ["1.", "A child with a very long complete name that must wrap", 45599, "Hermit Crab", 24, 12.25, 81, 16.5, "A guardian with a very long complete name that must wrap", "F"]
+      : ["1.", "A child with a very long complete name that must wrap", 45599, "Hermit Crab", 24, "F", "", "", "", "", "A guardian with a very long complete name that must wrap"];
+    const files = unzipSync(makeWorkbook(heading, [row], program));
+    const styles = strFromU8(files["xl/styles.xml"]);
+    const sheet = strFromU8(files["xl/worksheets/sheet1.xml"]);
+    const fonts = styles.match(/<fonts[^>]*>(.*?)<\/fonts>/)[1].match(/<font>.*?<\/font>/g);
+    assert.match(fonts[1], new RegExp(`<sz val="${REPORT_FONT_SIZES.title}"`));
+    assert.match(fonts[2], new RegExp(`<sz val="${REPORT_FONT_SIZES.metadata}"`));
+    assert.match(fonts[3], new RegExp(`<sz val="${REPORT_FONT_SIZES.header}"`));
+    assert.match(fonts[4], new RegExp(`<sz val="${REPORT_FONT_SIZES.body}"`));
+    const textStyle = styles.match(/<xf numFmtId="0" fontId="4"[^>]*>.*?<\/xf>/)[0];
+    assert.match(textStyle, /wrapText="1"/);
+    assert.doesNotMatch(styles, /shrinkToFit="1"/);
+    assert.ok(Number(sheet.match(/<row r="7" ht="(\d+)"/)[1]) >= 46, "wrapped names need enough row height at the shared body size");
+    assert.match(sheet, /fitToWidth="1" fitToHeight="0"/);
+    assert.match(sheet, new RegExp(`<row r="1" ht="${REPORT_ROW_HEIGHTS.title}"`));
+    assert.match(sheet, new RegExp(`<row r="2" ht="${REPORT_ROW_HEIGHTS.metadata}"`));
+    assert.match(sheet, new RegExp(`<row r="5" ht="${REPORT_ROW_HEIGHTS.headerTop}"`));
+    assert.match(sheet, new RegExp(`<row r="6" ht="${REPORT_ROW_HEIGHTS.headerBottom}"`));
+    assert.match(sheet, new RegExp(`<pageMargins left="${REPORT_PAGE_MARGINS.horizontal}" right="${REPORT_PAGE_MARGINS.horizontal}" top="${REPORT_PAGE_MARGINS.vertical}" bottom="${REPORT_PAGE_MARGINS.vertical}"`));
+  }
+});
+
 test("workbook escapes user-provided cell text", () => {
   const workbook = makeWorkbook(
     { barangay: "Tulay & Tipay", sitio: "North <Block>", purok: "Hermit Crab", bhw: "Jonalyn Bansag" },
@@ -126,7 +154,7 @@ test("print-ready PDF preserves long bond page size and paginates records", asyn
   for (const count of [0, 19, 100]) {
     const bytes = await makePrintReport(heading, Array.from({ length: count }, (_, index) => [String(index + 1), ...row.slice(1)]));
     const pdf = await PDFDocument.load(bytes);
-    assert.equal(pdf.getPageCount(), count <= 19 ? 1 : 5);
+    assert.equal(pdf.getPageCount(), Math.max(1, Math.ceil(count / 19)), `${count} short records should use Excel's fit-to-width print scaling`);
     for (const page of pdf.getPages()) assert.deepEqual(page.getSize(), { width: 936, height: 612 });
     assert.equal(pdf.catalog.getOrCreateViewerPreferences().getPrintScaling(), PrintScaling.None);
   }

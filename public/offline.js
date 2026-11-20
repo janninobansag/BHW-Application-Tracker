@@ -1,27 +1,35 @@
-import { activeWorkerId, readWorkerContents as readContents, queueWorkerChild as queueChild, queueWorkerDelete as queueDelete, changeWorkerContents as changeContents, syncWorkerChanges as syncChangesForProgram } from "/worker-offline-store.js";
+import { activeWorkerId, readWorkerContents as readContents, queueWorkerChild as queueChild, queueWorkerDelete as queueDelete, changeWorkerContents as changeContents, syncAllWorkerChanges } from "/worker-offline-store.js";
+import { workerRoute } from "/offline-routing.js";
+import { mountOfflineWorkspace } from "/offline-workspace.js";
 
-(() => {
+(async () => {
   const $ = (id) => document.getElementById(id);
-  const timbang = new URLSearchParams(location.search).get("program") === "timbang";
+  const route = workerRoute(new URL(location.href));
+  if (!route || !(await mountOfflineWorkspace(route))) return;
+  const timbang = route.program === "timbang";
   const program = timbang ? "timbang" : "deworming";
   const onlinePath = timbang ? "/operation-timbang" : "/";
   const readWorkerContents = () => readContents(program);
   const queueWorkerChild = (child, id, version) => queueChild(child, id, version, program);
   const queueWorkerDelete = (id, version) => queueDelete(id, version, program);
   const changeWorkerContents = (operation) => changeContents(operation, program);
-  const syncWorkerChanges = () => syncChangesForProgram(program);
+  const syncWorkerChanges = async () => { await syncAllWorkerChanges(); return readContents(program); };
   const measurementFields = ["weight", "height", "muac"];
+  const ageFieldset = document.createElement("fieldset"); ageFieldset.className = "registry-age-filter";
+  const ageLegend = document.createElement("legend"); ageLegend.textContent = "Age range"; ageFieldset.append(ageLegend);
+  const ageOptions = document.createElement("div"); ageOptions.className = "registry-age-options";
+  for (const [value, caption] of (timbang ? [["", "All ages"], ["73-plus", "73 months and older"]] : [["", "All ages"], ["under-6", "Under 6 months (0–5)"], ["60-plus", "60 months and older"]])) {
+    const label = document.createElement("label"); const input = document.createElement("input"); input.type = "radio"; input.name = "age"; input.value = value; input.checked = value === (new URLSearchParams(location.search).get("age") || "");
+    input.addEventListener("change", () => { page = 1; renderRecords(); }); label.append(input, document.createTextNode(caption)); ageOptions.append(label);
+  }
+  ageFieldset.append(ageOptions); document.querySelector(".registry-filter-locations").append(ageFieldset);
   if (timbang) {
     document.querySelector("main.content").classList.add("timbang-content");
     document.querySelector(".registry-workspace").classList.add("timbang-registry");
     document.title = "Operation Timbang | BHW Records";
     $("workspace-title").textContent = "Operation Timbang";
-    document.querySelector(".page-heading .eyebrow").textContent = "Child growth monitoring";
-    document.querySelector(".page-description").textContent = "Record weight, height, and MUAC for children in your assigned communities.";
     document.querySelector(".desktop-header-context strong").textContent = "Operation Timbang";
     document.querySelector("#registry h2").textContent = "Operation Timbang records";
-    document.querySelector(".side-nav a").textContent = "Operation Timbang";
-    document.querySelector(".mobile-header-links a").setAttribute("aria-label", "Operation Timbang");
     document.querySelector(".registry-table").classList.add("timbang-table");
     const header = document.querySelector(".registry-table thead tr");
     const no = document.createElement("th"); no.scope = "col"; no.textContent = "No."; header.prepend(no);
@@ -38,7 +46,6 @@ import { activeWorkerId, readWorkerContents as readContents, queueWorkerChild as
     });
     $("child-form").insertBefore(fields, document.querySelector("#child-form .location-fieldset"));
   }
-  document.querySelector(".side-nav").append(Object.assign(document.createElement("a"), { href: timbang ? "/offline.html" : "/offline.html?program=timbang", textContent: timbang ? "Vitamin A and Deworming" : "Operation Timbang" }));
   let contents = null;
   let busy = false;
   let saving = false;
@@ -55,10 +62,12 @@ import { activeWorkerId, readWorkerContents as readContents, queueWorkerChild as
   function setConnection() {
     const connected = navigator.onLine;
     const element = $("connection-status");
-    element.textContent = connected ? "Online" : "Offline: saving on this device";
+    const pending = contents?.pending.length || 0;
+    element.textContent = connected ? pending ? `Online · ${pending} pending` : "Online · All changes synced" : pending ? `Offline · ${pending} pending` : "Offline";
     element.dataset.connected = String(connected);
     element.classList.toggle("online", connected);
-    if ($("sync-button")) $("sync-button").disabled = !connected || busy || !contents?.pending.length;
+    if ($("sync-button")) { $("sync-button").disabled = !connected || busy || !pending; $("sync-button").hidden = !connected || !pending; }
+    $("count-pending").hidden = true;
     $("save-record-button").disabled = saving;
     $("export-button").disabled = !connected;
     $("export-button").title = connected ? "Return to the online registry to choose an Excel export" : "Excel export requires internet";
@@ -115,6 +124,7 @@ import { activeWorkerId, readWorkerContents as readContents, queueWorkerChild as
     $("count-male").textContent = String(records.filter((item) => item.sex === "M").length);
     $("count-female").textContent = String(records.filter((item) => item.sex === "F").length);
     $("count-pending").textContent = `${contents.pending.length} pending sync`;
+    setConnection();
     $("sync-button").disabled = !navigator.onLine || busy || contents.pending.length === 0;
   }
 
@@ -146,6 +156,7 @@ import { activeWorkerId, readWorkerContents as readContents, queueWorkerChild as
       deleteTarget = null;
       if ($("record-id").value === target.id) openEditor(null, false);
       renderRecords();
+      setNotice($("workspace-message"), "");
       showFeedback("Record deleted on this device. The deletion syncs automatically when connected.");
       if (navigator.onLine) void syncChanges();
     } catch (error) {
@@ -161,7 +172,8 @@ import { activeWorkerId, readWorkerContents as readContents, queueWorkerChild as
     const barangay = $("filter-barangay").value;
     const purok = $("filter-purok").value;
     const pendingIds = new Set(contents.pending.map((item) => item.id));
-    const records = currentRecords().filter((child) => `${child.name} ${child.parents}`.toLowerCase().includes(query) && (!barangay || child.barangay_id === barangay) && (!purok || child.purok_id === purok));
+    const ageFilter = document.querySelector('input[name="age"]:checked')?.value || "";
+    const records = currentRecords().filter((child) => `${child.name} ${child.parents}`.toLowerCase().includes(query) && (!barangay || child.barangay_id === barangay) && (!purok || child.purok_id === purok) && (!ageFilter || (ageFilter === "73-plus" ? ageInMonths(child.birthday) >= 73 : ageFilter === "under-6" ? ageInMonths(child.birthday) < 6 : ageInMonths(child.birthday) >= 60)));
     const pages = Math.max(1, Math.ceil(records.length / 8));
     page = Math.min(page, pages);
     const first = (page - 1) * 8;
@@ -235,10 +247,10 @@ import { activeWorkerId, readWorkerContents as readContents, queueWorkerChild as
     $("page-previous").disabled = page <= 1;
     $("page-next").disabled = page >= pages;
     setCounts(records);
-    $("registry-result-count").textContent = `${records.length} ${records.length === 1 ? "child" : "children"} in your care`;
-    const filterCount = Number(Boolean(barangay)) + Number(Boolean(purok));
+    $("registry-result-count").hidden = true;
+    const filterCount = Number(Boolean(barangay)) + Number(Boolean(purok)) + Number(Boolean(ageFilter));
     $("filter-toggle-label").textContent = `Filters${filterCount ? ` (${filterCount})` : ""}`;
-    $("active-location-filters").hidden = !filterCount;
+    $("active-location-filters").hidden = true;
     $("active-location-label").textContent = [contents.snapshot.barangays.find((item) => item.id === barangay)?.name, contents.snapshot.puroks.find((item) => item.id === purok)?.name].filter(Boolean).join(" / ");
     renderConflicts();
   }
@@ -324,6 +336,7 @@ import { activeWorkerId, readWorkerContents as readContents, queueWorkerChild as
       contents = await queueWorkerChild(child, id, $("record-version").value || undefined);
       $("record-id").value = id;
       await changeWorkerContents((state) => { delete state.draft; });
+      setNotice($("workspace-message"), "");
       openEditor(null, false);
       $("registry-grid").classList.remove("show-new-record");
       $("new-record-button").setAttribute("aria-expanded", "false");
@@ -451,7 +464,6 @@ import { activeWorkerId, readWorkerContents as readContents, queueWorkerChild as
       openedUserId = contents.snapshot.user.id;
       $("access-panel").hidden = true;
       $("workspace").hidden = false;
-      $("welcome").textContent = `Signed in as ${contents.snapshot.user.display_name}`;
       $("worker-name").textContent = contents.snapshot.user.display_name;
       $("worker-avatar").textContent = contents.snapshot.user.display_name.charAt(0).toUpperCase();
       $("account-name").textContent = contents.snapshot.user.display_name;
@@ -468,6 +480,10 @@ import { activeWorkerId, readWorkerContents as readContents, queueWorkerChild as
         openEditor({ id, updated_at: updatedAt, name: child.name, birthday: child.birthday, sex: child.sex, parents: child.parents, barangay_id: child.barangayId, purok_id: child.purokId, ...(timbang ? { weight: child.weight, height: child.height, muac: child.muac } : {}) });
         $("editor-title").textContent = id ? "Edit child record" : "Add a child";
         setNotice($("workspace-message"), "Your unfinished form was kept when the connection changed. Continue filling it in, then save.");
+      } else if (route.recordId) {
+        const record = currentRecords().find((item) => item.id === route.recordId);
+        if (record) openEditor(record);
+        else setNotice($("workspace-message"), "This record is not available in the saved registry.");
       }
       if (navigator.onLine) void syncChanges();
     } catch (error) {
@@ -499,6 +515,16 @@ import { activeWorkerId, readWorkerContents as readContents, queueWorkerChild as
   }
 
   $("child-form").addEventListener("submit", (event) => void saveChild(event));
+  document.addEventListener("click", async (event) => {
+    if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
+    if (!(anchor instanceof HTMLAnchorElement) || anchor.origin !== location.origin || !workerRoute(new URL(anchor.href)) || anchor.hash) return;
+    const draft = { id: $("record-id").value, updatedAt: $("record-version").value, child: { name: $("child-name").value, birthday: $("child-birthday").value, sex: $("child-sex").value, parents: $("child-parents").value, barangayId: $("child-barangay").value, purokId: $("child-purok").value, ...(timbang ? Object.fromEntries(measurementFields.map((field) => [field, $(`child-${field}`).value])) : {}) } };
+    if (!Object.values(draft.child).some(Boolean)) return;
+    event.preventDefault();
+    try { await changeWorkerContents((state) => { state.draft = draft; }); location.assign(anchor.href); }
+    catch { setNotice($("workspace-message"), "Save your form before leaving this page.", "error"); }
+  }, true);
   $("child-birthday").addEventListener("change", updateBirthdayHint);
   $("child-barangay").addEventListener("change", () => fillPuroks());
   $("record-search").addEventListener("input", () => { page = 1; renderRecords(); });

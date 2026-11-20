@@ -12,20 +12,22 @@ type BhwAccountListProps = {
   accounts: BhwAccount[];
   barangays: Barangay[];
   puroks: Purok[];
+  initialStatus?: string;
 };
 
 const pageSize = 10;
 
-export function BhwAccountList({ accounts, barangays, puroks }: BhwAccountListProps) {
+export function BhwAccountList({ accounts, barangays, puroks, initialStatus = "all" }: BhwAccountListProps) {
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [barangayFilter, setBarangayFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const normalizedSearch = search.trim().toLowerCase();
 
   const filteredAccounts = accounts.filter((account) => {
     const matchesSearch = !normalizedSearch || `${account.display_name} ${account.username}`.toLowerCase().includes(normalizedSearch);
-    const matchesStatus = statusFilter === "all" || (statusFilter === "active" ? account.is_active === 1 : account.is_active !== 1);
+    const hasAssignedPurok = (account.assigned_purok_ids ?? "").split(",").some((id) => puroks.some((purok) => purok.id === id.trim()));
+    const matchesStatus = statusFilter === "all" || (statusFilter === "unassigned" ? account.is_active === 1 && !hasAssignedPurok : statusFilter === "active" ? account.is_active === 1 : account.is_active !== 1);
     const assignedBarangayIds = (account.assigned_ids ?? "").split(",").filter(Boolean);
     const matchesBarangay = barangayFilter === "all" || assignedBarangayIds.includes(barangayFilter);
     return matchesSearch && matchesStatus && matchesBarangay;
@@ -49,7 +51,7 @@ export function BhwAccountList({ accounts, barangays, puroks }: BhwAccountListPr
     {accounts.length ? <>
       <div className="account-toolbar">
         <label className="account-control account-search"><span>Search accounts</span><input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setCurrentPage(1); }} placeholder="Name or username" /></label>
-        <label className="account-control"><span>Status</span><select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setCurrentPage(1); }}><option value="all">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
+        <label className="account-control"><span>Status</span><select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setCurrentPage(1); }}><option value="all">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option><option value="unassigned">Active, no Purok</option></select></label>
         <label className="account-control"><span>Assigned Barangay</span><select value={barangayFilter} onChange={(event) => { setBarangayFilter(event.target.value); setCurrentPage(1); }}><option value="all">All Barangays</option>{barangays.map((barangay) => <option key={barangay.id} value={barangay.id}>{barangay.name}</option>)}</select></label>
       </div>
       <p className="account-result-count" aria-live="polite">Showing {firstResult}-{lastResult} of {filteredAccounts.length} matching accounts ({accounts.length} total)</p>

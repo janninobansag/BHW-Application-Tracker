@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { backendRequest } from "@/Data/api-client";
 import { assertSameOrigin, clearLocalSession } from "@/Services/auth";
+import { postLoginRoute } from "@/Services/post-login-route";
 
 const value = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
 const go = (path: string, message: string, error = false): never => redirect(`${path}${path.includes("?") ? "&" : "?"}message=${encodeURIComponent(message)}&feedbackError=${error ? "1" : "0"}&feedbackId=${randomUUID()}`);
@@ -44,7 +45,7 @@ export async function login(form: FormData) {
       httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/", maxAge: 12 * 60 * 60,
     });
   }
-  redirect(result.user?.must_change_password ? "/password" : "/");
+  redirect(postLoginRoute(result.user ?? { must_change_password: 0 }));
 }
 
 export async function logout() {

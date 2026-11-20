@@ -2,25 +2,23 @@ import { readFile } from "node:fs/promises";
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, PrintScaling, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { REPORT_COLUMN_WIDTHS } from "./workbook.js";
-import { TIMBANG_COLUMN_WIDTHS, TIMBANG_HEADERS, type ReportHeading, type ReportProgram } from "./report-layout.js";
+import { REPORT_FONT_SIZES, REPORT_PAGE_MARGINS, REPORT_ROW_HEIGHTS, TIMBANG_COLUMN_WIDTHS, TIMBANG_HEADERS, type ReportHeading, type ReportProgram } from "./report-layout.js";
 
-type Heading = ReportHeading;
 type ReportRow = Array<string | number>;
 
-// Long bond paper, landscape. Dimensions and margins are in PDF points (72/in).
-export const REPORT_PAGE = { width: 936, height: 612, margin: 18 };
-const fontSize = 8.5;
-const lineHeight = 10;
+// US long bond paper, landscape. Horizontal and vertical margins match Excel.
+export const REPORT_PAGE = { width: 936, height: 612, margin: REPORT_PAGE_MARGINS.horizontal * 72, topBottomMargin: REPORT_PAGE_MARGINS.vertical * 72 };
+const lineHeight = REPORT_ROW_HEIGHTS.dataLine;
 let fonts: Promise<Buffer[]> | undefined;
 function fontBytes() {
   return fonts ??= Promise.all(["Regular", "Bold"].map((weight) => readFile(new URL(`../assets/fonts/NotoSans-${weight}.ttf`, import.meta.url))));
 }
 
-function wrap(value: string, font: PDFFont, width: number): string[] {
+function wrap(value: string, font: PDFFont, width: number, size: number): string[] {
   const lines: string[] = [];
   let line = "";
   for (const char of value.replace(/\s+/g, " ").trim()) {
-    if (line && font.widthOfTextAtSize(line + char, fontSize) > width) {
+    if (line && font.widthOfTextAtSize(line + char, size) > width) {
       // Prefer a word boundary, but also allow long unbroken names to wrap.
       const space = line.lastIndexOf(" ");
       if (space > 0) { lines.push(line.slice(0, space)); line = line.slice(space + 1) + char; }
@@ -38,7 +36,11 @@ function birthdayText(value: string | number): string {
   return `${month}/${day}/${year}`;
 }
 
-export async function makePrintReport(heading: Heading, records: ReportRow[], program: ReportProgram = "deworming"): Promise<Uint8Array> {
+function rowHeight(cells: string[][]): number {
+  return Math.max(REPORT_ROW_HEIGHTS.dataMinimum, Math.max(...cells.map((lines) => lines.length)) * lineHeight + REPORT_ROW_HEIGHTS.dataPadding);
+}
+
+export async function makePrintReport(heading: ReportHeading, records: ReportRow[], program: ReportProgram = "deworming"): Promise<Uint8Array> {
   const timbang = program === "timbang";
   const columnWeights = timbang ? TIMBANG_COLUMN_WIDTHS : REPORT_COLUMN_WIDTHS;
   const title = timbang ? `OPERATION TIMBANG ${heading.year ?? new Date().getFullYear()}` : "VITAMIN A AND DEWORMING";
@@ -50,26 +52,39 @@ export async function makePrintReport(heading: Heading, records: ReportRow[], pr
   const [regularBytes, boldBytes] = await fontBytes();
   const regular = await document.embedFont(regularBytes, { subset: true });
   const bold = await document.embedFont(boldBytes, { subset: true });
-  const { width, height, margin } = REPORT_PAGE;
+  // Excel prints the worksheet at fitToWidth=1. Lay out the PDF at worksheet
+  // size first, then scale the whole report, including its 13 pt fonts and rows.
+  // The workbook's widths use the Arial 11 digit grid (7 px plus 5 px padding).
+  const worksheetWidths = columnWeights.map((value) => (Math.floor(value * 7 + 5)) * 72 / 96);
+  const worksheetWidth = worksheetWidths.reduce((sum, value) => sum + value, 0);
+  const printScale = Math.min(1, (REPORT_PAGE.width - REPORT_PAGE.margin * 2) / worksheetWidth);
+  const width = REPORT_PAGE.width / printScale;
+  const height = REPORT_PAGE.height / printScale;
+  const margin = REPORT_PAGE.margin / printScale;
+  const topBottomMargin = REPORT_PAGE.topBottomMargin / printScale;
   const tableWidth = width - margin * 2;
-  const weightTotal = columnWeights.reduce((sum, value) => sum + value, 0);
-  const widths = columnWeights.map((value) => value / weightTotal * tableWidth);
+  const widths = worksheetWidths.map((value) => value / worksheetWidth * tableWidth);
   const edges = [margin];
   widths.forEach((value) => edges.push(edges[edges.length - 1] + value));
+
+  const titleBottom = height - topBottomMargin - REPORT_ROW_HEIGHTS.title;
   const metadata = [
     `Barangay: ${heading.barangay}`,
     `Sitio/Purok: ${heading.sitio} / ${heading.purok}`,
     `BHW: ${heading.bhw}`,
-  ].map((value) => wrap(value, bold, edges[totalColumn - 1] - margin - 8));
-  const metadataHeights = metadata.map((lines) => Math.max(17, lines.length * lineHeight + 5));
-  const headerY = height - margin - 30 - metadataHeights.reduce((sum, value) => sum + value, 0);
-  const headerHeight = 36;
+  ].map((value) => wrap(value, bold, edges[totalColumn - 1] - margin - 8, REPORT_FONT_SIZES.metadata));
+  const metadataHeights = metadata.map((lines) => Math.max(REPORT_ROW_HEIGHTS.metadata, lines.length * lineHeight + REPORT_ROW_HEIGHTS.dataPadding));
+  const headerY = titleBottom - metadataHeights.reduce((sum, value) => sum + value, 0);
+  const headerHeight = REPORT_ROW_HEIGHTS.headerTop + REPORT_ROW_HEIGHTS.headerBottom;
   const bodyTop = headerY - headerHeight;
-  const bodyBottom = margin + 12;
+  const bodyBottom = topBottomMargin;
   const bodyHeight = bodyTop - bodyBottom;
   const prepared = records.map((row) => {
-    const cells = Array.from({ length: widths.length }, (_, column) => wrap(column === 2 ? birthdayText(row[column]) : String(row[column] ?? ""), regular, widths[column] - 8));
-    return { cells, height: Math.max(20, Math.max(...cells.map((lines) => lines.length)) * lineHeight + 8) };
+    const cells = Array.from({ length: widths.length }, (_, column) => {
+      const cellPadding = column === 2 ? 1.5 : 4;
+      return wrap(column === 2 ? birthdayText(row[column]) : String(row[column] ?? ""), regular, widths[column] - cellPadding * 2, REPORT_FONT_SIZES.body);
+    });
+    return { cells, height: rowHeight(cells) };
   });
   const pages: Array<typeof prepared> = [[]];
   let used = 0;
@@ -80,65 +95,84 @@ export async function makePrintReport(heading: Heading, records: ReportRow[], pr
   }
 
   function line(page: PDFPage, x1: number, y1: number, x2: number, y2: number) {
-    page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: 0.55, color: rgb(0, 0, 0) });
+    page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: 0.75, color: rgb(0, 0, 0) });
   }
-  function text(page: PDFPage, value: string, x: number, y: number, size = fontSize, font = regular) {
+  function text(page: PDFPage, value: string, x: number, y: number, size: number, font: PDFFont) {
     page.drawText(value, { x, y, size, font, color: rgb(0, 0, 0) });
   }
-  function centered(page: PDFPage, value: string, left: number, right: number, y: number, size = fontSize, font = bold) {
+  function centered(page: PDFPage, value: string, left: number, right: number, y: number, size: number, font: PDFFont) {
     text(page, value, left + (right - left - font.widthOfTextAtSize(value, size)) / 2, y, size, font);
   }
+  function drawLines(page: PDFPage, lines: string[], left: number, right: number, bottom: number, cellHeight: number, size: number, font: PDFFont, align: "left" | "center") {
+    const leading = Math.max(size + 2, size * 1.15);
+    const blockHeight = (lines.length - 1) * leading + size;
+    let baseline = bottom + (cellHeight - blockHeight) / 2 + (lines.length - 1) * leading + size * 0.2;
+    for (const value of lines) {
+      if (align === "center") centered(page, value, left, right, baseline, size, font);
+      else text(page, value, left, baseline, size, font);
+      baseline -= leading;
+    }
+  }
 
-  pages.forEach((rows, pageIndex) => {
-    const page = document.addPage([width, height]);
-    centered(page, title, margin, width - margin, height - margin - 16, 15);
+  pages.forEach((rows) => {
+    const page = document.addPage([REPORT_PAGE.width, REPORT_PAGE.height]);
+    drawLines(page, [title], margin, width - margin, titleBottom, REPORT_ROW_HEIGHTS.title, REPORT_FONT_SIZES.title, bold, "center");
+
     const male = records.filter((row) => row[timbang ? 9 : 5] === "M").length;
     const female = records.filter((row) => row[timbang ? 9 : 5] === "F").length;
     const totals: Array<[string, number]> = [["Male:", male], ["Female:", female], ["Total:", records.length]];
-    let metadataY = height - margin - 34;
+    let metadataTop = titleBottom;
     metadata.forEach((lines, index) => {
-      lines.forEach((value, lineIndex) => text(page, value, margin, metadataY - lineIndex * lineHeight, fontSize, bold));
+      const rowHeight = metadataHeights[index];
+      const rowBottom = metadataTop - rowHeight;
+      const baseline = rowBottom + (rowHeight - REPORT_FONT_SIZES.metadata) / 2 + REPORT_FONT_SIZES.metadata * 0.2;
+      drawLines(page, lines, margin, edges[totalColumn - 1] - 8, rowBottom, rowHeight, REPORT_FONT_SIZES.metadata, bold, "left");
       const [label, count] = totals[index];
-      text(page, label, edges[totalColumn] - bold.widthOfTextAtSize(label, fontSize) - 3, metadataY, fontSize, bold);
-      centered(page, String(count), edges[totalColumn], edges[totalColumn + 1], metadataY, fontSize, bold);
-      metadataY -= metadataHeights[index];
+      text(page, label, edges[totalColumn] - bold.widthOfTextAtSize(label, REPORT_FONT_SIZES.metadata) - 3, baseline, REPORT_FONT_SIZES.metadata, bold);
+      centered(page, String(count), edges[totalColumn], edges[totalColumn + 1], baseline, REPORT_FONT_SIZES.metadata, bold);
+      metadataTop = rowBottom;
     });
 
-    // Match the Excel export's unfilled, two-level merged table heading.
+    const headerDividerY = headerY - REPORT_ROW_HEIGHTS.headerTop;
     line(page, margin, headerY, width - margin, headerY);
     line(page, margin, bodyTop, width - margin, bodyTop);
     if (timbang) {
       edges.forEach((edge) => line(page, edge, headerY, edge, bodyTop));
-      TIMBANG_HEADERS.forEach((value, column) => centered(page, value, edges[column], edges[column + 1], headerY - 21, 8));
+      TIMBANG_HEADERS.forEach((value, column) => {
+        drawLines(page, wrap(value, bold, widths[column] - 2, REPORT_FONT_SIZES.header), edges[column] + 1, edges[column + 1] - 1, bodyTop, headerHeight, REPORT_FONT_SIZES.header, bold, "center");
+      });
     } else {
-    for (const column of [0, 1, 2, 3, 4, 5, 6, 8, 10, 11]) line(page, edges[column], headerY, edges[column], bodyTop);
-    line(page, edges[5], headerY - 18, edges[10], headerY - 18);
-    for (const column of [7, 9]) line(page, edges[column], headerY - 18, edges[column], bodyTop);
-    ["NO.", "NAME", "DATE OF BIRTH", "PUROK", "MONTHS"].forEach((value, column) => centered(page, value, edges[column], edges[column + 1], headerY - 21, 8));
-    centered(page, "GUARDIAN", edges[10], edges[11], headerY - 21, 8);
-    centered(page, "Gender", edges[5], edges[6], headerY - 12, 8);
-    centered(page, "M/F", edges[5], edges[6], headerY - 30, 8);
-    centered(page, "Vitamin A", edges[6], edges[8], headerY - 12, 8);
-    centered(page, "Deworming", edges[8], edges[10], headerY - 12, 8);
-    ["1ST DOSE", "2ND DOSE", "1ST DOSE", "2ND DOSE"].forEach((value, index) => centered(page, value, edges[index + 6], edges[index + 7], headerY - 30, 7.5));
+      for (const column of [0, 1, 2, 3, 4, 5, 6, 8, 10, 11]) line(page, edges[column], headerY, edges[column], bodyTop);
+      line(page, edges[5], headerDividerY, edges[10], headerDividerY);
+      for (const column of [7, 9]) line(page, edges[column], headerDividerY, edges[column], bodyTop);
+      const mergedHeaders: Array<[string, number]> = [["NO.", 0], ["NAME", 1], ["DATE OF BIRTH", 2], ["PUROK", 3], ["MONTHS", 4], ["GUARDIAN", 10]];
+      mergedHeaders.forEach(([value, column]) => drawLines(page, wrap(value, bold, widths[column] - 2, REPORT_FONT_SIZES.header), edges[column] + 1, edges[column + 1] - 1, bodyTop, headerHeight, REPORT_FONT_SIZES.header, bold, "center"));
+      [["Gender", 5, 6], ["Vitamin A", 6, 8], ["Deworming", 8, 10]].forEach(([value, left, right]) => {
+        const caption = String(value);
+        const firstColumn = Number(left);
+        const lastColumn = Number(right);
+        drawLines(page, wrap(caption, bold, edges[lastColumn] - edges[firstColumn] - 2, REPORT_FONT_SIZES.header), edges[firstColumn] + 1, edges[lastColumn] - 1, headerDividerY, REPORT_ROW_HEIGHTS.headerTop, REPORT_FONT_SIZES.header, bold, "center");
+      });
+      drawLines(page, ["M/F"], edges[5], edges[6], bodyTop, REPORT_ROW_HEIGHTS.headerBottom, REPORT_FONT_SIZES.header, bold, "center");
+      ["1ST DOSE", "2ND DOSE", "1ST DOSE", "2ND DOSE"].forEach((value, index) => {
+        const column = index + 6;
+        drawLines(page, wrap(value, bold, widths[column] - 2, REPORT_FONT_SIZES.header), edges[column] + 1, edges[column + 1] - 1, bodyTop, REPORT_ROW_HEIGHTS.headerBottom, REPORT_FONT_SIZES.header, bold, "center");
+      });
     }
 
-    // Fill unused space with ruled rows, rather than stretching text or leaving
-    // a large blank area. Extra records continue onto another full-width page.
     let y = bodyTop;
     for (const row of rows) {
-      row.cells.forEach((values, column) => values.forEach((value, index) => {
-        const baseline = y - (row.height - values.length * lineHeight) / 2 - 8 - index * lineHeight;
-        if ((timbang ? [0, 4, 5, 6, 7] : [0, 4, 5]).includes(column)) centered(page, value, edges[column], edges[column + 1], baseline, fontSize, regular);
-        else text(page, value, edges[column] + 4, baseline);
-      }));
-      y -= row.height;
+      const rowBottom = y - row.height;
+      row.cells.forEach((values, column) => {
+        const align = (timbang ? [0, 4, 5, 6, 7] : [0, 4, 5]).includes(column) ? "center" : "left";
+        const cellPadding = column === 2 ? 1.5 : 4;
+        drawLines(page, values, edges[column] + cellPadding, edges[column + 1] - cellPadding, rowBottom, row.height, REPORT_FONT_SIZES.body, regular, align);
+      });
+      y = rowBottom;
       line(page, margin, y, width - margin, y);
     }
-    while (y - 20 > bodyBottom) { y -= 20; line(page, margin, y, width - margin, y); }
-    line(page, margin, bodyBottom, width - margin, bodyBottom);
-    edges.forEach((x) => line(page, x, bodyTop, x, bodyBottom));
-    text(page, `Page ${pageIndex + 1} of ${pages.length}`, margin, margin - 1, 7);
+    edges.forEach((edge) => line(page, edge, bodyTop, edge, y));
+    page.scaleContent(printScale, printScale);
   });
   return document.save();
 }

@@ -72,6 +72,48 @@ export async function readWorkerContents(program = "deworming") {
   return userId ? (await read(userId, program))?.contents || null : null;
 }
 
+// Prepare both registries from any signed-in worker page, without requiring the
+// worker to visit each registry before losing connection.
+export async function prepareWorkerWorkspace(expectedUserId, isCurrent = () => true) {
+  const version = localStorage.getItem(ACCESS_VERSION);
+  const request = async (path) => {
+    const response = await fetch(`/api/backend/${path}`, { credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(20000) });
+    if (!response.ok) throw new Error("Connect to prepare both offline registries.");
+    return response.json();
+  };
+  const identity = await request("auth/me");
+  if (identity.user?.id !== expectedUserId || identity.user.role !== "bhw" || identity.user.must_change_password) throw new Error("Offline records are available only to signed-in workers.");
+  const [children, timbang, barangays, puroks] = await Promise.all([request("children"), request("operation-timbang"), request("barangays"), request("puroks")]);
+  if (![children.children, timbang.children, barangays.barangays, puroks.puroks].every(Array.isArray)) throw new Error("Could not prepare offline records.");
+  const current = () => isCurrent() && localStorage.getItem(ACCESS_VERSION) === version;
+  if (!current()) return;
+  const snapshot = { user: { id: identity.user.id, username: identity.user.username, display_name: identity.user.display_name }, barangays: barangays.barangays, puroks: puroks.puroks, savedAt: new Date().toISOString() };
+  await prepareWorker({ ...snapshot, children: children.children }, current);
+  if (current()) await prepareWorker({ ...snapshot, children: timbang.children }, current, "timbang");
+}
+
+export function effectiveWorkerRecords(contents) {
+  if (!contents) return [];
+  const records = new Map(contents.snapshot.children.map((child) => [child.id, { ...child }]));
+  for (const pending of contents.pending) {
+    if (pending.kind === "delete") { records.delete(pending.id); continue; }
+    const { child } = pending;
+    records.set(pending.id, { ...records.get(pending.id), ...child, id: pending.id,
+      barangay_id: child.barangayId, purok_id: child.purokId,
+      barangay_name: contents.snapshot.barangays.find((item) => item.id === child.barangayId)?.name || "",
+      purok_name: contents.snapshot.puroks.find((item) => item.id === child.purokId)?.name || "",
+      updated_at: pending.expectedUpdatedAt });
+  }
+  return [...records.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function syncAllWorkerChanges() {
+  const results = await Promise.allSettled([syncWorkerChanges(), syncWorkerChanges("timbang")]);
+  const failure = results.find((result) => result.status === "rejected");
+  if (failure) throw failure.reason;
+  return results.map((result) => result.value);
+}
+
 export async function changeWorkerContents(operation, program = "deworming") {
   return exclusive(async () => {
     const userId = activeWorkerId();
