@@ -30,6 +30,8 @@ export async function getDb(): Promise<Db> {
     database.collection("login_attempts").createIndex({ username: 1 }, { unique: true }),
     database.collection("login_attempts").createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 }),
     database.collection("security_limits").createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 }),
+    database.collection("notification_reads").createIndex({ user_id: 1, notice_id: 1 }, { unique: true }),
+    database.collection("notification_reads").createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 }),
   ]);
   return database;
 }

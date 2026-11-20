@@ -7,6 +7,19 @@ let server;
 let database;
 let closeDb;
 
+function birthdayMonthsAgo(monthsAgo) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const getPart = (type) => Number(parts.find((part) => part.type === type)?.value);
+  const todayYear = getPart("year");
+  const todayMonth = getPart("month");
+  const todayDay = getPart("day");
+  const monthIndex = todayYear * 12 + todayMonth - 1 - monthsAgo;
+  const year = Math.floor(monthIndex / 12);
+  const month = ((monthIndex % 12) + 12) % 12;
+  const day = Math.min(todayDay, new Date(Date.UTC(year, month + 1, 0)).getUTCDate());
+  return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 after(async () => {
   if (server) await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   if (database) await database.dropDatabase();
@@ -149,6 +162,33 @@ test("authenticated worker CRUD, assignment access, and filtered Excel export", 
   });
   assert.equal(otherPurokChild.status, 200);
 
+  // A read receipt belongs to the account, survives a fresh login, and cannot
+  // be written for another worker's assigned records or arbitrary milestones.
+  const noticeDate = birthdayMonthsAgo(0);
+  const receiptChild = { ...updated, id: randomUUID(), birthday: birthdayMonthsAgo(12) };
+  const hiddenReceiptChild = { ...receiptChild, id: randomUUID(), purok_id: otherPurok.id };
+  await database.collection("children").insertMany([receiptChild, hiddenReceiptChild]);
+  try {
+    const receiptId = `${receiptChild.id}:${noticeDate}`;
+    const hiddenReceiptId = `${hiddenReceiptChild.id}:${noticeDate}`;
+    assert.equal((await request("/api/notifications/age/read")).status, 401);
+    const readResponse = await request("/api/notifications/age/read", { method: "PUT", cookie: workerLogin.cookie, body: { ids: [receiptId, hiddenReceiptId, `missing-child:${noticeDate}`], userId: "admin" } });
+    assert.equal(readResponse.status, 200);
+    assert.deepEqual(await readResponse.json(), { userId: worker.id, readIds: [receiptId] });
+    const repeatRead = await request("/api/notifications/age/read", { method: "PUT", cookie: workerLogin.cookie, body: { ids: [receiptId, receiptId] } });
+    assert.equal(repeatRead.status, 200);
+    assert.equal(await database.collection("notification_reads").countDocuments({ user_id: worker.id, notice_id: receiptId }), 1);
+    const adminReceipts = await (await request("/api/notifications/age/read", { cookie: admin.cookie })).json();
+    assert.deepEqual(adminReceipts.readIds, []);
+    assert.equal((await request("/api/notifications/age/read", { method: "PUT", cookie: workerLogin.cookie, body: { ids: [{ $ne: null }] } })).status, 400);
+    await request("/api/auth/logout", { method: "POST", cookie: workerLogin.cookie, body: {} });
+    workerLogin = await login("integration.worker", "ChangedWorker!2026");
+    const afterLogin = await (await request("/api/notifications/age/read", { cookie: workerLogin.cookie })).json();
+    assert.deepEqual(afterLogin.readIds, [receiptId], "read status survives logout and a new session");
+  } finally {
+    await database.collection("children").deleteMany({ id: { $in: [receiptChild.id, hiddenReceiptChild.id] } });
+  }
+
   const staleUpdate = await request("/api/children", {
     method: "POST",
     cookie: workerLogin.cookie,
@@ -168,6 +208,62 @@ test("authenticated worker CRUD, assignment access, and filtered Excel export", 
   assert.doesNotMatch(sheet, /Other Purok Child/, "export should include only the selected Purok");
   assert.match(sheet, /<f>COUNTIF\(F7:F7,&quot;F&quot;\)<\/f><v>1<\/v>/);
   assert.match(sheet, /<f>COUNTA\(B7:B7\)<\/f><v>1<\/v>/);
+
+  // Different birthdays and mixed capitalization must still export names A–Z.
+  for (const [collection, programQuery] of [["children", ""], ["operation_timbang", "&program=timbang"]]) {
+    const orderFixtures = [
+      { id: randomUUID(), name: "Z Older Child", birthday: "2020-01-15" },
+      { id: randomUUID(), name: "A Younger Child", birthday: "2025-12-20" },
+      { id: randomUUID(), name: "B Same Birthday Child", birthday: "2020-01-15" },
+      { id: randomUUID(), name: "c Lowercase Child", birthday: "2024-01-15" },
+    ].map((child) => ({ ...child, sex: "F", parents: "Ordering Guardian", barangay_id: barangay.id, purok_id: purok.id, created_by: worker.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }));
+    await database.collection(collection).insertMany(orderFixtures);
+    try {
+      const ordered = await request(`/api/export/xlsx?barangay=${barangay.id}&purok=${purok.id}&sitio=${sitio.id}${programQuery}`, { cookie: admin.cookie });
+      assert.equal(ordered.status, 200);
+      const orderSheet = strFromU8(unzipSync(new Uint8Array(await ordered.arrayBuffer()))["xl/worksheets/sheet1.xml"]);
+      assert.ok(orderSheet.indexOf("A Younger Child") < orderSheet.indexOf("B Same Birthday Child"), "exports sort by child name before birthday");
+      assert.ok(orderSheet.indexOf("B Same Birthday Child") < orderSheet.indexOf("c Lowercase Child"), "lowercase names belong in alphabetical order");
+      assert.ok(orderSheet.indexOf("c Lowercase Child") < orderSheet.indexOf("Z Older Child"), "name order is case insensitive");
+      assert.match(orderSheet, /<c r="A7" t="inlineStr" s="6"><is><t xml:space="preserve">1\.<\/t>/);
+    } finally {
+      await database.collection(collection).deleteMany({ id: { $in: orderFixtures.map((child) => child.id) } });
+    }
+
+    const ageFixtures = (collection === "operation_timbang" ? [0, 5, 60, 72, 73, 74] : [5, 6, 59, 60]).map((months) => ({
+      id: randomUUID(),
+      name: `Age Boundary ${months}`,
+      birthday: birthdayMonthsAgo(months),
+      sex: "F",
+      parents: "Boundary Guardian",
+      barangay_id: barangay.id,
+      purok_id: purok.id,
+      created_by: worker.id,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }));
+    await database.collection(collection).insertMany(ageFixtures);
+    try {
+      const rangeExport = await request(`/api/export/xlsx?barangay=${barangay.id}&purok=${purok.id}&sitio=${sitio.id}&excludeAgeExtremes=true${programQuery}`, { cookie: admin.cookie });
+      assert.equal(rangeExport.status, 200);
+      const rangeSheet = strFromU8(unzipSync(new Uint8Array(await rangeExport.arrayBuffer()))["xl/worksheets/sheet1.xml"]);
+      if (collection === "operation_timbang") {
+        for (const months of [0, 5, 60, 72]) assert.match(rangeSheet, new RegExp(`Age Boundary ${months}(?:<|&)`), `${months} months should remain in the Operation Timbang export`);
+        for (const months of [73, 74]) assert.doesNotMatch(rangeSheet, new RegExp(`Age Boundary ${months}(?:<|&)`), `${months} months should be excluded from the Operation Timbang export`);
+        const printRange = await request(`/api/export/xlsx?format=pdf&barangay=${barangay.id}&purok=${purok.id}&sitio=${sitio.id}&excludeAgeExtremes=true&program=timbang`, { cookie: admin.cookie });
+        assert.equal(printRange.status, 200);
+        assert.match(printRange.headers.get("content-type") ?? "", /application\/pdf/);
+        assert.equal(Buffer.from(await printRange.arrayBuffer()).subarray(0, 5).toString(), "%PDF-");
+      } else {
+        assert.match(rangeSheet, /Age Boundary 6/, "the 6-month lower boundary should remain in the export");
+        assert.match(rangeSheet, /Age Boundary 59/, "the 59-month upper boundary should remain in the export");
+        assert.doesNotMatch(rangeSheet, /Age Boundary 5(?:<|&)/, "children aged 0 through 5 months should be excluded");
+        assert.doesNotMatch(rangeSheet, /Age Boundary 60(?:<|&)/, "children aged 60 months and older should be excluded");
+      }
+    } finally {
+      await database.collection(collection).deleteMany({ id: { $in: ageFixtures.map((child) => child.id) } });
+    }
+  }
 
   const printResponse = await request(`/api/export/xlsx?format=pdf&barangay=${encodeURIComponent(barangay.id)}&purok=${encodeURIComponent(purok.id)}&sitio=${encodeURIComponent(sitio.id)}`, { cookie: admin.cookie });
   assert.equal(printResponse.status, 200);

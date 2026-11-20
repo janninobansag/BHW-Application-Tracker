@@ -5,6 +5,14 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .sync-status-row .worker-sync-status{margin:0}
 .sync-status-row button{min-height:36px;padding:.35rem .65rem;font-size:.75rem}
 #snapshot-date{margin:0 0 1rem}
+.offline-mobile-nav { position: fixed; inset: 68px 12px auto auto; width: min(300px, calc(100dvw - 24px)); max-height: calc(100dvh - 90px); overflow: auto; margin: 0; padding: 6px; border: 1px solid #dce3da; border-radius: 4px; background: #fff; color: #203b36; box-shadow: 0 8px 24px #123c3620; }
+.offline-mobile-nav a { display:flex;align-items:center;min-height:48px;padding:12px;color:inherit;text-decoration:none;font-size:.84rem; }
+.offline-mobile-nav a[aria-current="page"] { background:#edf3e9;color:#185c4c;border-inline-start:3px solid #185c4c;font-weight:700; }
+.offline-mobile-nav[popover]:not(:popover-open) { display:none; }
+.offline-dashboard-record { grid-template-columns:minmax(0,1fr)!important; }
+.offline-notification-item { grid-template-columns:minmax(0,1fr) auto!important;gap:16px;padding:18px; }
+.compact-page-heading + .sync-status-row { margin-bottom:16px; }
+.compact-page-heading .sync-status-row { margin:0;font-size:.72rem; }
 .record-pending{display:block;margin-top:.3rem;color:#94620f;font-size:.72rem;font-weight:700}
 .cached-menu{position:relative;display:inline-block;text-align:left}
 .cached-menu summary{list-style:none;cursor:pointer}

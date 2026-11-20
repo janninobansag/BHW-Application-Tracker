@@ -1,18 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 import { Bell, Check, ChevronRight } from "lucide-react";
 import type { AgeNotice } from "@/Services/age-notifications";
-
-const readEventName = "bhw-age-notifications-read";
-
-function storedReadIds(key: string): string[] {
-  try {
-    const value: unknown = JSON.parse(localStorage.getItem(key) || "[]");
-    return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
-  } catch { return []; }
-}
+import { useNotificationReads } from "@/Client/controllers/use-notification-reads";
 
 function dateLabel(date: string, today: string) {
   if (date === today) return "Today";
@@ -20,26 +12,14 @@ function dateLabel(date: string, today: string) {
 }
 
 export function AgeNotificationsPage({ userId, notices, today }: { userId: string; notices: AgeNotice[]; today: string }) {
-  const storageKey = `bhw-age-notifications:${userId}`;
-  const [read, setRead] = useState<string[]>([]);
-  const readIds = useRef<string[]>([]);
-
-  const markRead = useCallback((ids: string[]) => {
-    const next = [...new Set([...readIds.current, ...storedReadIds(storageKey), ...ids])].sort();
-    readIds.current = next;
-    setRead(next);
-    try {
-      const saved = JSON.stringify(next);
-      if (localStorage.getItem(storageKey) !== saved) localStorage.setItem(storageKey, saved);
-    } catch { /* Keep read state in memory when browser storage is unavailable. */ }
-    window.dispatchEvent(new CustomEvent(readEventName, { detail: { key: storageKey, ids: next } }));
-  }, [storageKey]);
+  const { readIds: read, loaded, error, markRead } = useNotificationReads(userId);
 
   useEffect(() => {
-    readIds.current = storedReadIds(storageKey);
-    setRead(readIds.current);
-    markRead(notices.map((notice) => notice.id));
-  }, [markRead, notices, storageKey]);
+    const markVisible = () => { if (!document.hidden) markRead(notices.map((notice) => notice.id)); };
+    markVisible();
+    document.addEventListener("visibilitychange", markVisible);
+    return () => document.removeEventListener("visibilitychange", markVisible);
+  }, [markRead, notices]);
 
   return <section className="panel notification-page-panel" aria-labelledby="notification-page-title">
     <header className="notification-page-heading">
@@ -50,12 +30,13 @@ export function AgeNotificationsPage({ userId, notices, today }: { userId: strin
       </div>
       <span className="notification-page-count">{notices.length} {notices.length === 1 ? "update" : "updates"}</span>
     </header>
+    {error && <p role="status">{error}</p>}
     {notices.length ? <ul className="notification-page-list">
       {notices.map((notice) => <li key={notice.id}>
-        <Link href={`/records/${encodeURIComponent(notice.child.id)}`} className={`notification-page-item${read.includes(notice.id) ? " is-read" : " is-unread"}`} onClick={() => markRead([notice.id])}>
+        <Link href={`/records/${encodeURIComponent(notice.child.id)}`} className={`notification-page-item${read.includes(notice.id) ? " is-read" : loaded ? " is-unread" : ""}`} onClick={() => markRead([notice.id])}>
           <span className="notification-page-icon" aria-hidden="true"><Bell /></span>
           <span className="notification-page-copy"><strong>{notice.child.name}</strong><span>Reached {notice.months} {notice.months === 1 ? "month" : "months"} old</span></span>
-          <span className="notification-page-meta"><time dateTime={notice.date}>{dateLabel(notice.date, today)}</time><span><Check aria-hidden="true" />Read</span></span>
+          <span className="notification-page-meta"><time dateTime={notice.date}>{dateLabel(notice.date, today)}</time>{read.includes(notice.id) && <span><Check aria-hidden="true" />Read</span>}</span>
           <ChevronRight className="notification-page-chevron" aria-hidden="true" />
         </Link>
       </li>)}
