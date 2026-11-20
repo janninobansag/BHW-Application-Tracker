@@ -6,7 +6,7 @@ export function PwaServiceWorker() {
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
 
-    void navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {
+    void navigator.serviceWorker.register("/sw.js", { scope: "/", type: "module" }).catch(() => {
       // The app remains usable if service workers are disabled by the browser.
     });
   }, []);

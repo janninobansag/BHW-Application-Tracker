@@ -17,7 +17,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
   const q = typeof params.q === "string" ? params.q.slice(0, 80) : "";
   const barangay = typeof params.barangay === "string" ? params.barangay : "";
   const purok = typeof params.purok === "string" ? params.purok : "";
-  const age = params.age === "under-5" || params.age === "over-60" ? params.age : "";
+  const age = params.age === "under-6" || params.age === "under-5"
+    ? "under-6"
+    : params.age === "60-plus" || params.age === "over-60"
+      ? "60-plus"
+      : "";
   const [barangays, puroks, sitios, children] = await Promise.all([
     listBarangays(user),
     listPuroks(user),

@@ -1,8 +1,12 @@
-const CACHE_NAME = "bhw-pwa-shell-v17";
+import { workerRoute } from "/offline-routing.js";
+const CACHE_NAME = "bhw-pwa-shell-v19";
 const APP_SHELL = [
   "/offline.html",
   "/offline.js",
   "/worker-offline-store.js",
+  "/offline-routing.js",
+  "/offline-workspace.js",
+  "/dashboard-ui.css",
   "/records-ui.css",
   "/civic-workspace.css",
   "/offline-ui.css",
@@ -51,9 +55,8 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith("/api/")) return;
 
   if (request.mode === "navigate") {
-    const workerPage = url.pathname === "/" || url.pathname.startsWith("/records/") || url.pathname === "/offline.html" || url.pathname === "/operation-timbang" || url.pathname.startsWith("/operation-timbang/");
+    const workerPage = !!workerRoute(url);
     const fallback = async () => {
-      if (url.pathname.startsWith("/operation-timbang")) return Response.redirect(`${url.origin}/offline.html?program=timbang`, 302);
       return (await caches.match(workerPage ? "/offline.html" : "/online-required.html")) || Response.error();
     };
     event.respondWith(

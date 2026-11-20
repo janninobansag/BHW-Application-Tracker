@@ -11,6 +11,7 @@ export function ChildRecordFilters({
   barangayId,
   purokId,
   ageFilter,
+  program = "deworming",
   onQueryChange,
   onBarangayChange,
   onPurokChange,
@@ -22,6 +23,7 @@ export function ChildRecordFilters({
   barangayId: string;
   purokId: string;
   ageFilter: string;
+  program?: "deworming" | "timbang";
   onQueryChange: (value: string) => void;
   onBarangayChange: (value: string) => void;
   onPurokChange: (value: string) => void;
@@ -47,8 +49,10 @@ export function ChildRecordFilters({
       <legend>Age range</legend>
       <div className="registry-age-options">
         <label htmlFor="age-all"><input id="age-all" type="radio" name="age" value="" checked={!ageFilter} onChange={() => onAgeFilterChange("")} />All ages</label>
-        <label htmlFor="age-under-5"><input id="age-under-5" type="radio" name="age" value="under-5" checked={ageFilter === "under-5"} onChange={() => onAgeFilterChange("under-5")} />Under 5 months</label>
-        <label htmlFor="age-over-60"><input id="age-over-60" type="radio" name="age" value="over-60" checked={ageFilter === "over-60"} onChange={() => onAgeFilterChange("over-60")} />Over 60 months</label>
+        {program === "timbang" ? <label htmlFor="age-73-plus"><input id="age-73-plus" type="radio" name="age" value="73-plus" checked={ageFilter === "73-plus"} onChange={() => onAgeFilterChange("73-plus")} />73 months and older</label> : <>
+          <label htmlFor="age-under-6"><input id="age-under-6" type="radio" name="age" value="under-6" checked={ageFilter === "under-6"} onChange={() => onAgeFilterChange("under-6")} />Under 6 months (0–5)</label>
+          <label htmlFor="age-60-plus"><input id="age-60-plus" type="radio" name="age" value="60-plus" checked={ageFilter === "60-plus"} onChange={() => onAgeFilterChange("60-plus")} />60 months and older</label>
+        </>}
       </div>
     </fieldset>
     </div>

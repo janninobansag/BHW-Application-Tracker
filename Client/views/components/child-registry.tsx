@@ -45,7 +45,9 @@ export function ChildRegistry({
     (!normalizedQuery || record.name.toLowerCase().includes(normalizedQuery) || record.parents.toLowerCase().includes(normalizedQuery))
     && (!barangayId || record.barangay_id === barangayId)
     && (!purokId || record.purok_id === purokId)
-    && (!ageFilter || (ageFilter === "under-5" ? ageInMonths(record.birthday, today) < 5 : ageFilter === "over-60" ? ageInMonths(record.birthday, today) > 60 : true)),
+    && (!ageFilter || (program === "timbang"
+      ? ageFilter !== "73-plus" || ageInMonths(record.birthday, today) >= 73
+      : ageFilter === "under-6" ? ageInMonths(record.birthday, today) < 6 : ageFilter === "60-plus" ? ageInMonths(record.birthday, today) >= 60 : true)),
   );
   const male = visibleRecords.filter((record) => record.sex === "M").length;
   const female = visibleRecords.filter((record) => record.sex === "F").length;
@@ -86,6 +88,7 @@ export function ChildRegistry({
       <section className="panel record-panel">
         <div className="section-heading"><div><p className="eyebrow">Your registry</p><h2>{program === "timbang" ? "Operation Timbang records" : "Child records"} <span className="registry-total-badge">{records.length}</span></h2></div><div className="registry-heading-actions"><ExportExcelDialog barangays={barangays} puroks={puroks} sitios={sitios} program={program} /><DialogTrigger asChild><button type="button" className="primary-button registry-add-record"><Plus aria-hidden="true" />Add child</button></DialogTrigger></div></div>
         <ChildRecordFilters
+          program={program}
           barangays={barangays}
           puroks={puroks}
           query={query}

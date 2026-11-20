@@ -191,6 +191,58 @@ router.use("/api", (_req, res, next) => {
   return next();
 });
 
+router.get("/api/notifications/age/read", async (_req, res, next) => {
+  try {
+    const user = res.locals.user as User;
+    const receipts = await (await getDb()).collection("notification_reads").find({ user_id: user.id, expires_at: { $gt: new Date() } }, { projection: { notice_id: 1 } }).toArray();
+    return res.json({ userId: user.id, readIds: receipts.map((receipt) => String(receipt.notice_id)) });
+  } catch (error) { return next(error); }
+});
+
+router.put("/api/notifications/age/read", async (req, res, next) => {
+  try {
+    const user = res.locals.user as User;
+    const input: unknown = req.body.ids;
+    if (!Array.isArray(input) || input.length > 500 || input.some((id) => typeof id !== "string" || !/^[a-zA-Z0-9_-]{1,160}:\d{4}-\d{2}-\d{2}$/.test(id))) return message(res, 400, "Invalid notification IDs.");
+    const today = todayInManila();
+    const earliest = new Date(`${today}T12:00:00Z`);
+    earliest.setUTCDate(earliest.getUTCDate() - 30);
+    const cutoff = earliest.toISOString().slice(0, 10);
+    const ids = [...new Set(input as string[])].filter((id) => {
+      const date = id.slice(id.lastIndexOf(":") + 1);
+      return validBirthday(date) && date >= cutoff;
+    });
+    const db = await getDb();
+    const childIds = ids.map((id) => id.slice(0, id.lastIndexOf(":")));
+    const query = { id: { $in: childIds }, ...(user.role === "admin" ? {} : { purok_id: { $in: await assignedPurokIds(user) } }) };
+    const children = new Map((await db.collection<Child>("children").find(query).toArray()).map((child) => [child.id, child]));
+    const accepted = ids.filter((id) => {
+      const child = children.get(id.slice(0, id.lastIndexOf(":")));
+      const date = id.slice(id.lastIndexOf(":") + 1);
+      const previous = new Date(`${date}T12:00:00Z`);
+      previous.setUTCDate(previous.getUTCDate() - 1);
+      const before = previous.toISOString().slice(0, 10);
+      return child && child.birthday <= before && ageInMonths(child.birthday, date) > ageInMonths(child.birthday, before);
+    });
+    // Atomic, idempotent receipts are scoped to the authenticated account.
+    // Keep them beyond the seven-day notice window, then expire automatically.
+    const updates = accepted.map((noticeId) => {
+      const expiresAt = new Date(`${noticeId.slice(noticeId.lastIndexOf(":") + 1)}T00:00:00Z`);
+      expiresAt.setUTCDate(expiresAt.getUTCDate() + 45);
+      const filter = { user_id: user.id, notice_id: noticeId };
+      return { updateOne: { filter, update: { $setOnInsert: { ...filter, read_at: new Date(), expires_at: expiresAt } }, upsert: true } };
+    });
+    if (updates.length) {
+      try {
+        await db.collection("notification_reads").bulkWrite(updates, { ordered: false });
+      } catch (error) {
+        if (!(error && typeof error === "object" && "code" in error && error.code === 11000)) throw error;
+      }
+    }
+    return res.json({ userId: user.id, readIds: accepted });
+  } catch (error) { return next(error); }
+});
+
 router.get("/api/barangays", async (_req, res, next) => {
   try {
     const user = res.locals.user as User;
@@ -580,11 +632,11 @@ router.get("/api/export/xlsx", async (req, res, next) => {
     if (q) query.$or = [{ name: { $regex: escapeRegExp(q), $options: "i" } }, { parents: { $regex: escapeRegExp(q), $options: "i" } }];
     const today = todayInManila();
     const excludeAgeExtremes = String(req.query.excludeAgeExtremes ?? "") === "true";
-    const matchedChildren = await db.collection<Child>(program === "timbang" ? "operation_timbang" : "children").find(query).sort({ name: 1, birthday: 1 }).toArray();
+    const matchedChildren = await db.collection<Child>(program === "timbang" ? "operation_timbang" : "children").find(query).collation({ locale: "en", strength: 2 }).sort({ name: 1, birthday: 1, id: 1 }).toArray();
     const children = excludeAgeExtremes
       ? matchedChildren.filter((child) => {
         const months = ageInMonths(child.birthday, today);
-        return months >= 5 && months <= 60;
+        return program === "timbang" ? months >= 0 && months <= 72 : months >= 6 && months < 60;
       })
       : matchedChildren;
     const [barangay, puroks, assignedWorkers] = await Promise.all([

@@ -7,12 +7,14 @@ import { FeedbackDialog } from "@/Client/views/components/feedback-dialog";
 import { PasswordInput } from "@/Client/views/components/password-input";
 import { OfflineSession } from "@/Client/views/components/offline-session";
 import { LoginGallery } from "@/Client/views/components/login-gallery";
+import { postLoginRoute } from "@/Services/post-login-route";
 
 export const dynamic = "force-dynamic";
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ message?: string; feedbackError?: string; feedbackId?: string }> }) {
   if (!(await isSetupComplete())) redirect("/setup");
-  if (await getCurrentUser()) redirect("/");
+  const user = await getCurrentUser();
+  if (user) redirect(postLoginRoute(user));
   const { message, feedbackError, feedbackId } = await searchParams;
   return <main className="auth-page login-page"><div className="auth-panel">
     <OfflineSession role="signed-out" />

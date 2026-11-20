@@ -45,7 +45,7 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Run unit tests
+      - name: Run unit and dashboard routing tests
         run: npm test
 
       - name: Lint frontend

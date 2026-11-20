@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import "fake-indexeddb/auto";
-import { prepareWorker, readWorkerContents, queueWorkerChild, queueWorkerDelete, syncWorkerChanges, closeWorkerAccess } from "../public/worker-offline-store.js";
+import { prepareWorker, prepareWorkerWorkspace, readWorkerContents, queueWorkerChild, queueWorkerDelete, syncWorkerChanges, closeWorkerAccess } from "../public/worker-offline-store.js";
 
 const values = new Map();
 Object.defineProperty(globalThis, "localStorage", { value: { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: (key) => values.delete(key) }, configurable: true });
@@ -17,6 +17,38 @@ const snapshot = (id) => ({ user: { id, username: id, display_name: "Worker" }, 
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
 
 test("automatic worker storage and reconnect sync preserve records", async (t) => {
+  await t.test("one online visit prepares both separate registries and keeps pending changes", async () => {
+    const initial = snapshot("all-pages");
+    globalThis.fetch = async (url) => {
+      if (url.endsWith("auth/me")) return json({ user: { ...initial.user, role: "bhw", must_change_password: 0 } });
+      if (url.endsWith("children")) return json({ children: [{ id: "vitamin-only", ...child }] });
+      if (url.endsWith("operation-timbang")) return json({ children: [{ id: "timbang-only", ...child, weight: 12, height: 81, muac: 16 }] });
+      if (url.endsWith("barangays")) return json({ barangays: initial.barangays });
+      return json({ puroks: initial.puroks });
+    };
+    await prepareWorkerWorkspace("all-pages");
+    assert.equal((await readWorkerContents()).snapshot.children[0].id, "vitamin-only");
+    assert.equal((await readWorkerContents("timbang")).snapshot.children[0].id, "timbang-only");
+    await queueWorkerChild(child, "pending-growth", undefined, "timbang");
+    await prepareWorkerWorkspace("all-pages");
+    assert.equal((await readWorkerContents("timbang")).pending[0].id, "pending-growth");
+    assert.equal((await readWorkerContents()).pending.length, 0);
+  });
+  await t.test("workspace preparation refuses admins and cannot reopen a signed-out worker", async () => {
+    closeWorkerAccess();
+    globalThis.fetch = async () => json({ user: { id: "admin", role: "admin" } });
+    await assert.rejects(prepareWorkerWorkspace("admin"), /only to signed-in workers/);
+    assert.equal(await readWorkerContents(), null);
+    const initial = snapshot("workspace-signout");
+    globalThis.fetch = async (url) => {
+      if (url.endsWith("auth/me")) return json({ user: { ...initial.user, role: "bhw", must_change_password: 0 } });
+      if (url.endsWith("barangays")) return json({ barangays: initial.barangays });
+      if (url.endsWith("puroks")) { closeWorkerAccess(); return json({ puroks: initial.puroks }); }
+      return json({ children: [] });
+    };
+    await prepareWorkerWorkspace("workspace-signout");
+    assert.equal(await readWorkerContents(), null);
+  });
   await t.test("Operation Timbang uses an independent queue and syncs measurements to its own endpoint", async () => {
     await prepareWorker(snapshot("two-programs"));
     await queueWorkerChild(child, "shared-id");

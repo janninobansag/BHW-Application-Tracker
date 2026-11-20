@@ -1,10 +1,15 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 import type { OfflineChildInput, OfflineSnapshot } from "@/Client/offline/vault";
 import { prepareWorker, changeWorkerContents, queueWorkerChild, queueWorkerDelete, syncWorkerChanges } from "@/public/worker-offline-store.js";
 import { validChildDetails } from "@/Services/child-records";
 import { FeedbackDialog } from "@/Client/views/components/feedback-dialog";
+
+const subscribeToStatusSlot = () => () => {};
+const getStatusSlot = () => document.getElementById("record-status-slot");
+const getServerStatusSlot = () => null;
 
 export function AutomaticWorkerRecords({ snapshot, program = "deworming" }: { snapshot: OfflineSnapshot; program?: "deworming" | "timbang" }) {
   const returnTo = program === "timbang" ? "/operation-timbang" : "/";
@@ -13,6 +18,7 @@ export function AutomaticWorkerRecords({ snapshot, program = "deworming" }: { sn
   const [notice, setNotice] = useState("");
   const [saved, setSaved] = useState("");
   const [syncStatus, setSyncStatus] = useState("Preparing device records");
+  const statusSlot = useSyncExternalStore(subscribeToStatusSlot, getStatusSlot, getServerStatusSlot);
   useEffect(() => {
     let disposed = false;
     let saving = false;
@@ -110,7 +116,7 @@ export function AutomaticWorkerRecords({ snapshot, program = "deworming" }: { sn
     };
   }, [router, snapshot, program, returnTo, offlineUrl]);
   return <>
-    <p className="worker-sync-status" role="status">{syncStatus}</p>
+    {statusSlot ? createPortal(<p className="worker-sync-status" role="status">{syncStatus}</p>, statusSlot) : null}
     {notice && <p className="notice" role="status">{notice} <a href={offlineUrl}>Review saved changes</a></p>}
     {saved && <FeedbackDialog message="Record changes saved and synced." isError={false} feedbackId={saved} />}
   </>;
