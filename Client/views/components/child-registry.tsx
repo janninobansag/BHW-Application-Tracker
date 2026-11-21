@@ -86,7 +86,7 @@ export function ChildRegistry({
     </div>
     <div className={`workspace-grid registry-workspace registry-workspace-online${program === "timbang" ? " timbang-registry" : ""}`}>
       <section className="panel record-panel">
-        <div className="section-heading"><div><p className="eyebrow">Your registry</p><h2>{program === "timbang" ? "Operation Timbang records" : "Child records"} <span className="registry-total-badge">{records.length}</span></h2></div><div className="registry-heading-actions"><ExportExcelDialog barangays={barangays} puroks={puroks} sitios={sitios} program={program} /><DialogTrigger asChild><button type="button" className="primary-button registry-add-record"><Plus aria-hidden="true" />Add child</button></DialogTrigger></div></div>
+        <div className="section-heading"><div><p className="eyebrow">Your registry</p><h2>{program === "timbang" ? "Operation Timbang records" : "Vitamin A & Deworming"} <span className="registry-total-badge">{records.length}</span></h2></div><div className="registry-heading-actions"><ExportExcelDialog barangays={barangays} puroks={puroks} sitios={sitios} program={program} /><DialogTrigger asChild><button type="button" className="primary-button registry-add-record"><Plus aria-hidden="true" />Add child</button></DialogTrigger></div></div>
         <ChildRecordFilters
           program={program}
           barangays={barangays}
