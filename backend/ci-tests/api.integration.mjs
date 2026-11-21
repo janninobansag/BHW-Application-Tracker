@@ -290,6 +290,24 @@ test("authenticated worker CRUD, assignment access, and filtered Excel export", 
   assert.deepEqual((await operationList.json()).children.map((item) => item.name), ["Timbang Child"]);
   const dewormingList = await request("/api/children", { cookie: workerLogin.cookie });
   assert.deepEqual((await dewormingList.json()).children.map((item) => item.name), ["Updated Test Child"], "the same record ID in Operation Timbang cannot overwrite the deworming record");
+  const activityPath = `/api/admin/users/${encodeURIComponent(worker.id)}/records`;
+  assert.equal((await request(activityPath, { cookie: workerLogin.cookie })).status, 403, "workers must not view staff activity");
+  assert.equal((await request(`${activityPath}?page=0`, { cookie: admin.cookie })).status, 400);
+  assert.equal((await request(`${activityPath}?program=unknown`, { cookie: admin.cookie })).status, 400);
+  assert.equal((await request("/api/admin/users/missing/records", { cookie: admin.cookie })).status, 404);
+  const activityResponse = await request(activityPath, { cookie: admin.cookie });
+  assert.equal(activityResponse.status, 200);
+  const activity = await activityResponse.json();
+  assert.deepEqual(activity.counts, { deworming: 1, timbang: 1, total: 2 }, "admin-created records must not count toward a worker's additions");
+  assert.deepEqual(activity.records.map(({ id, program }) => ({ id, program })), [
+    { id: created.id, program: "timbang" },
+    { id: created.id, program: "deworming" },
+  ], "records from separate registries must remain distinguishable even when they share an ID");
+  assert.equal(activity.records[0].barangay_name, barangay.name);
+  assert.equal(activity.records[0].purok_name, purok.name);
+  const timbangActivity = await (await request(`${activityPath}?program=timbang`, { cookie: admin.cookie })).json();
+  assert.deepEqual(timbangActivity.records.map((item) => item.name), ["Timbang Child"]);
+  assert.equal(timbangActivity.filteredTotal, 1);
   const timbangQuery = `program=timbang&barangay=${encodeURIComponent(barangay.id)}&purok=${encodeURIComponent(purok.id)}&sitio=${encodeURIComponent(sitio.id)}`;
   const timbangExport = await request(`/api/export/xlsx?${timbangQuery}`, { cookie: admin.cookie });
   assert.equal(timbangExport.status, 200);
@@ -310,6 +328,8 @@ test("authenticated worker CRUD, assignment access, and filtered Excel export", 
   assert.equal(staleTimbang.status, 409);
   const deleteTimbang = await request(`/api/operation-timbang/${created.id}`, { method: "DELETE", cookie: workerLogin.cookie, body: { updatedAt: editedTimbang.updated_at } });
   assert.equal(deleteTimbang.status, 200);
+  const afterTimbangDelete = await (await request(activityPath, { cookie: admin.cookie })).json();
+  assert.deepEqual(afterTimbangDelete.counts, { deworming: 1, timbang: 0, total: 1 });
   const retainedChild = await request("/api/children", { cookie: workerLogin.cookie });
   assert.deepEqual((await retainedChild.json()).children.map((item) => item.id), [created.id], "deleting from Operation Timbang must preserve the deworming record");
 

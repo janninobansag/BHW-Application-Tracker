@@ -5,6 +5,8 @@ import { resetBhwPassword, setBhwActive } from "@/Client/controllers/actions";
 import type { Barangay, ManagedUser, Purok } from "@/Data/entities";
 import { AssignmentManager } from "@/Client/views/components/assignment-manager";
 import { PasswordInput } from "@/Client/views/components/password-input";
+import Link from "next/link";
+import { ArrowRight, ClipboardList } from "lucide-react";
 
 type BhwAccount = Pick<ManagedUser, "id" | "username" | "display_name" | "is_active" | "assigned_ids" | "assigned_purok_ids">;
 
@@ -61,6 +63,7 @@ export function BhwAccountList({ accounts, barangays, puroks, initialStatus = "a
         return <article className="worker" key={user.id}>
           <div className="worker-heading"><span className="avatar">{user.display_name.charAt(0).toUpperCase()}</span><div><h3>{user.display_name}</h3><p>@{user.username}</p></div><span className={`status ${user.is_active ? "active" : "inactive"}`}>{user.is_active ? "Active" : "Inactive"}</span></div>
           <p className="worker-coverage-summary">{assignedBarangayIds.length ? barangays.filter((item) => assignedBarangayIds.includes(item.id)).map((item) => item.name).join(", ") : "No Barangay assigned"}<span>{assignedPurokIds.length} {assignedPurokIds.length === 1 ? "Purok" : "Puroks"} assigned</span></p>
+          <Link className="worker-records-link" href={`/admin/workers/${encodeURIComponent(user.id)}`}><ClipboardList aria-hidden="true" />Records added<ArrowRight aria-hidden="true" /></Link>
           <details className="worker-management"><summary>Manage account<span>Assignments and security</span></summary><div className="worker-management-body">
           <AssignmentManager key={`${user.id}:${user.assigned_ids ?? ""}:${user.assigned_purok_ids ?? ""}`} userId={user.id} barangays={barangays} puroks={puroks} assignedBarangayIds={assignedBarangayIds} assignedPurokIds={assignedPurokIds} />
           <div className="worker-actions"><form action={resetBhwPassword} className="reset-form"><input type="hidden" name="userId" value={user.id} /><label htmlFor={`reset-${user.id}`}>Temporary password</label><div><PasswordInput id={`reset-${user.id}`} name="temporaryPassword" minLength={12} maxLength={128} placeholder="12+ characters" required /><button className="secondary-button" type="submit">Set password</button></div></form>

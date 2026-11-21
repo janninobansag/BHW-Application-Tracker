@@ -342,6 +342,52 @@ router.get("/api/admin/users", requireAdmin, async (_req, res, next) => {
   } catch (error) { return next(error); }
 });
 
+router.get("/api/admin/users/:id/records", requireAdmin, async (req, res, next) => {
+  try {
+    const program = req.query.program === undefined ? "all" : req.query.program;
+    const requestedPage = req.query.page === undefined ? 1 : Number(req.query.page);
+    if (!["all", "deworming", "timbang"].includes(program as string) || !Number.isSafeInteger(requestedPage) || requestedPage < 1) {
+      return message(res, 400, "Choose a valid program and page.");
+    }
+    const db = await getDb();
+    const workerId = String(req.params.id);
+    const worker = await db.collection<User>("users").findOne({ id: workerId, role: "bhw" });
+    if (!worker) return message(res, 404, "BHW account unavailable.");
+
+    const [deworming, timbang] = await Promise.all([
+      db.collection<Child>("children").countDocuments({ created_by: workerId }),
+      db.collection<Child>("operation_timbang").countDocuments({ created_by: workerId }),
+    ]);
+    const total = program === "deworming" ? deworming : program === "timbang" ? timbang : deworming + timbang;
+    const pageSize = 10;
+    const pageCount = Math.max(1, Math.ceil(total / pageSize));
+    const page = Math.min(requestedPage, pageCount);
+    const selectRecords = (label: string) => [
+      { $match: { created_by: workerId } },
+      { $project: { _id: 0, id: 1, name: 1, created_at: 1, barangay_id: 1, purok_id: 1, program: { $literal: label } } },
+    ];
+    const firstCollection = program === "timbang" ? "operation_timbang" : "children";
+    const pipeline: Record<string, unknown>[] = selectRecords(program === "timbang" ? "timbang" : "deworming");
+    if (program === "all") pipeline.push({ $unionWith: { coll: "operation_timbang", pipeline: selectRecords("timbang") } });
+    pipeline.push({ $sort: { created_at: -1, id: -1, program: 1 } }, { $skip: (page - 1) * pageSize }, { $limit: pageSize });
+    const rows = await db.collection<Child>(firstCollection).aggregate<{ id: string; name: string; created_at: string; barangay_id: string; purok_id: string; program: "deworming" | "timbang" }>(pipeline).toArray();
+    const [barangays, puroks] = await Promise.all([
+      db.collection<Barangay>("barangays").find({ id: { $in: [...new Set(rows.map((row) => row.barangay_id))] } }).toArray(),
+      db.collection<Purok>("puroks").find({ id: { $in: [...new Set(rows.map((row) => row.purok_id))] } }).toArray(),
+    ]);
+    const barangayNames = new Map(barangays.map((item) => [item.id, item.name]));
+    const purokNames = new Map(puroks.map((item) => [item.id, item.name]));
+    return res.json({
+      worker: { id: worker.id, display_name: worker.display_name, username: worker.username, is_active: worker.is_active },
+      counts: { deworming, timbang, total: deworming + timbang },
+      records: rows.map((row) => ({ id: row.id, name: row.name, created_at: row.created_at, program: row.program, barangay_name: barangayNames.get(row.barangay_id) ?? "Barangay removed", purok_name: purokNames.get(row.purok_id) ?? "Purok removed" })),
+      page,
+      pageCount,
+      filteredTotal: total,
+    });
+  } catch (error) { return next(error); }
+});
+
 router.post(["/api/children", "/api/operation-timbang"], async (req, res, next) => {
   try {
     const user = res.locals.user as User;
