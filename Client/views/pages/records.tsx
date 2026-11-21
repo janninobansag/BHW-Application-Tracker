@@ -29,7 +29,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
     listChildren(user),
   ]);
   const today = todayInManila();
-  return <AppShell user={user} title="Child records" eyebrow="Community health registry">
+  return <AppShell user={user} title="Vitamin A & Deworming" eyebrow="Community health registry">
     {user.role === "bhw" && <AutomaticWorkerRecords snapshot={{ user: { id: user.id, username: user.username, display_name: user.display_name }, children, barangays, puroks, savedAt: new Date().toISOString() }} />}
     <FeedbackDialog message={params.message} isError={params.feedbackError === "1"} feedbackId={params.feedbackId} />
     <ChildRegistry key={children.map((child) => `${child.id}:${child.updated_at}`).join(",")} records={children} barangays={barangays} puroks={puroks} sitios={sitios} today={today} initialQuery={q} initialBarangayId={barangay} initialPurokId={purok} initialAgeFilter={age}>
