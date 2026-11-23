@@ -8,6 +8,7 @@ import { ExportExcelDialog } from "@/Client/views/components/export-excel-dialog
 import { Plus, SearchX } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/Client/shared/components/ui/dialog";
 import { ageInMonths } from "@/Services/child-records";
+import { compareChildNames, displayChildName } from "@/public/child-name.js";
 
 export function ChildRegistry({
   records,
@@ -42,13 +43,13 @@ export function ChildRegistry({
   const [announcedCount, setAnnouncedCount] = useState(records.length);
   const normalizedQuery = query.trim().toLowerCase();
   const visibleRecords = records.filter((record) =>
-    (!normalizedQuery || record.name.toLowerCase().includes(normalizedQuery) || record.parents.toLowerCase().includes(normalizedQuery))
+    (!normalizedQuery || record.name.toLowerCase().includes(normalizedQuery) || displayChildName(record.name, record.surname, record.middle_initial, record.first_name).toLowerCase().includes(normalizedQuery) || record.parents.toLowerCase().includes(normalizedQuery))
     && (!barangayId || record.barangay_id === barangayId)
     && (!purokId || record.purok_id === purokId)
     && (!ageFilter || (program === "timbang"
       ? ageFilter !== "73-plus" || ageInMonths(record.birthday, today) >= 73
       : ageFilter === "under-6" ? ageInMonths(record.birthday, today) < 6 : ageFilter === "60-plus" ? ageInMonths(record.birthday, today) >= 60 : true)),
-  );
+  ).sort((first, second) => compareChildNames(first.name, second.name, first.surname, second.surname));
   const male = visibleRecords.filter((record) => record.sex === "M").length;
   const female = visibleRecords.filter((record) => record.sex === "F").length;
 
@@ -86,7 +87,7 @@ export function ChildRegistry({
     </div>
     <div className={`workspace-grid registry-workspace registry-workspace-online${program === "timbang" ? " timbang-registry" : ""}`}>
       <section className="panel record-panel">
-        <div className="section-heading"><div><p className="eyebrow">Your registry</p><h2>{program === "timbang" ? "Operation Timbang records" : "Child records"} <span className="registry-total-badge">{records.length}</span></h2></div><div className="registry-heading-actions"><ExportExcelDialog barangays={barangays} puroks={puroks} sitios={sitios} program={program} /><DialogTrigger asChild><button type="button" className="primary-button registry-add-record"><Plus aria-hidden="true" />Add child</button></DialogTrigger></div></div>
+        <div className="section-heading"><div><p className="eyebrow">Your registry</p><h2>{program === "timbang" ? "Operation Timbang records" : "Vitamin A & Deworming"} <span className="registry-total-badge">{records.length}</span></h2></div><div className="registry-heading-actions"><ExportExcelDialog barangays={barangays} puroks={puroks} sitios={sitios} program={program} /><DialogTrigger asChild><button type="button" className="primary-button registry-add-record"><Plus aria-hidden="true" />Add child</button></DialogTrigger></div></div>
         <ChildRecordFilters
           program={program}
           barangays={barangays}
@@ -105,6 +106,6 @@ export function ChildRegistry({
         <p className="table-note">Age is calculated in full months as of {new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric", year: "numeric", timeZone: "Asia/Manila" }).format(new Date(`${today}T00:00:00+08:00`))}.</p>
       </section>
     </div>
-    <DialogContent className={`new-record-dialog${program === "timbang" ? " timbang-record-dialog" : ""}`}><DialogHeader><p className="eyebrow">New registry entry</p><DialogTitle>{program === "timbang" ? "Add Operation Timbang record" : "Add a child"}</DialogTitle><DialogDescription>{program === "timbang" ? "Add the child’s details and community. Measurements can be completed later." : "Enter the child’s details and assigned community. All fields are required."}</DialogDescription></DialogHeader>{children}</DialogContent>
+    <DialogContent className={`new-record-dialog${program === "timbang" ? " timbang-record-dialog" : ""}`}><DialogHeader><p className="eyebrow">New registry entry</p><DialogTitle>{program === "timbang" ? "Add Operation Timbang record" : "Add a child"}</DialogTitle><DialogDescription>{program === "timbang" ? "Add the child’s details and community. Measurements and M.I. are optional." : "Enter the child’s details and assigned community. M.I. is optional."}</DialogDescription></DialogHeader>{children}</DialogContent>
   </Dialog>;
 }

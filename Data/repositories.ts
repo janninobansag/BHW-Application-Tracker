@@ -1,6 +1,6 @@
 import "server-only";
-import { backendJson } from "./api-client";
-import type { AppUser, Barangay, Child, ManagedUser, Purok, Sitio, TimbangRecord } from "./entities";
+import { backendJson, backendRequest } from "./api-client";
+import type { AppUser, Barangay, Child, ManagedUser, Purok, Sitio, TimbangRecord, WorkerRecords } from "./entities";
 export type { Barangay, Child, ManagedUser, Purok, Sitio } from "./entities";
 
 export async function isSetupComplete(): Promise<boolean> {
@@ -32,6 +32,14 @@ export async function listChildren(_user: AppUser, q = "", barangayId = "", puro
 
 export async function listManagedUsers(): Promise<ManagedUser[]> {
   return (await backendJson<{ users: ManagedUser[] }>("/admin/users")).users;
+}
+
+export async function getWorkerRecords(id: string, program: "all" | "deworming" | "timbang", page: number): Promise<WorkerRecords | null> {
+  const params = new URLSearchParams({ program, page: String(page) });
+  const response = await backendRequest(`/admin/users/${encodeURIComponent(id)}/records?${params}`);
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Render API request failed (${response.status})`);
+  return await response.json() as WorkerRecords;
 }
 
 export async function listTimbangRecords(_user: AppUser): Promise<TimbangRecord[]> {

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { ageInMonths } from "@/Services/child-records";
+import { displayChildName } from "@/public/child-name.js";
 import type { Child, TimbangRecord } from "@/Data/entities";
 import { deleteChildRecord, deleteTimbangRecord } from "@/Client/controllers/actions";
 import {
@@ -32,14 +33,14 @@ export function ChildRecordsTable({ records, today, returnTo, program = "dewormi
     <div className={`table-scroll registry-table${timbang ? " timbang-table" : ""}`} tabIndex={0} role="region" aria-label={timbang ? "Operation Timbang registry" : "Child registry"}><table><caption className="sr-only">{timbang ? "Operation Timbang children and body measurements" : "Registered children and their assigned communities"}</caption><thead><tr>{timbang && <th scope="col">No.</th>}<th scope="col">Child</th><th scope="col">Age</th><th scope="col">Sex</th>{timbang && <><th scope="col">Weight (kg)</th><th scope="col">Height (cm)</th><th scope="col">MUAC (cm)</th></>}<th scope="col">Parent / guardian</th><th scope="col">Community / BHW</th><th scope="col"><span className="sr-only">Action</span></th></tr></thead><tbody>
       {visibleChildren.map((child, index) => <tr key={child.id}>
         {timbang && <td className="timbang-number" data-label="No.">{first + index + 1}</td>}
-        <th scope="row" className="record-child"><strong>{child.name}</strong><small>Born {timbang ? child.birthday.split("-").slice(1).concat(child.birthday.split("-")[0]).join("/") : child.birthday}</small></th>
+        <th scope="row" className="record-child"><strong>{displayChildName(child.name, child.surname, child.middle_initial, child.first_name)}</strong><small>Born {timbang ? child.birthday.split("-").slice(1).concat(child.birthday.split("-")[0]).join("/") : child.birthday}</small></th>
         <td className="record-age" data-label="Age">{timbang && <span className="timbang-age-label">Age</span>}{ageInMonths(child.birthday, today)} months</td>
         <td className="record-sex" data-label="Sex"><span className={`sex-pill ${child.sex === "F" ? "sex-pill-female" : "sex-pill-male"}`}><span aria-hidden="true">{child.sex}</span><span className="sr-only">{child.sex === "F" ? "Female" : "Male"}</span></span>{timbang && <span className="timbang-sex-label" aria-hidden="true">{child.sex === "F" ? "Female" : "Male"}</span>}</td>
         {timbang && ([['weight', 'Weight', 'kg'], ['height', 'Height', 'cm'], ['muac', 'MUAC', 'cm']] as const).map(([field, label, unit]) => <td key={field} className="timbang-value" data-label={label}><span className="timbang-measurement-label">{label}</span>{(child as TimbangRecord)[field] == null ? <span className="timbang-unmeasured">Not measured</span> : <span className="timbang-measurement-number">{(child as TimbangRecord)[field]}<small className="timbang-unit">{unit}</small></span>}</td>)}
         <td className="record-parents" data-label="Parents">{child.parents}</td>
         <td className="record-location" data-label="Community"><div className="record-desktop-location"><strong>{child.barangay_name}</strong><small>{child.purok_name || "Purok not specified"} / {child.bhw_names || "Unassigned"}</small></div><details className="record-mobile-disclosure"><summary>{timbang ? "Guardian and community" : "View details"}</summary><dl><div><dt>Parent / guardian</dt><dd>{child.parents}</dd></div><div><dt>Barangay / Purok</dt><dd>{child.barangay_name} / {child.purok_name || "Purok not specified"}</dd></div><div><dt>Health worker</dt><dd>{child.bhw_names || "Unassigned"}</dd></div></dl></details></td>
         <td className="record-actions-cell"><DropdownMenu modal={false} open={openMenuId === child.id} onOpenChange={(open) => setOpenMenuId(open ? child.id : null)}>
-          <DropdownMenuTrigger asChild onPointerDown={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} onClick={() => setOpenMenuId((current) => current === child.id ? null : child.id)}><button type="button" className="record-menu-trigger" aria-label={`Actions for ${child.name}`}><MoreHorizontal aria-hidden="true" /></button></DropdownMenuTrigger>
+          <DropdownMenuTrigger asChild onPointerDown={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} onClick={() => setOpenMenuId((current) => current === child.id ? null : child.id)}><button type="button" className="record-menu-trigger" aria-label={`Actions for ${displayChildName(child.name, child.surname, child.middle_initial, child.first_name)}`}><MoreHorizontal aria-hidden="true" /></button></DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="record-menu-content">
             <DropdownMenuItem asChild className="record-menu-item"><Link href={`${timbang ? "/operation-timbang" : "/records"}/${encodeURIComponent(child.id)}`}><Pencil aria-hidden="true" />Edit</Link></DropdownMenuItem>
             <DropdownMenuItem className="record-menu-item record-menu-delete" onSelect={() => setDeleteChild(child)}><Trash2 aria-hidden="true" />Delete</DropdownMenuItem>
@@ -49,7 +50,7 @@ export function ChildRecordsTable({ records, today, returnTo, program = "dewormi
     </tbody></table></div>
     <AlertDialog open={Boolean(deleteChild)} onOpenChange={(open) => { if (!open) setDeleteChild(null); }}>
       {deleteChild && <AlertDialogContent>
-        <AlertDialogHeader><AlertDialogTitle>{timbang ? "Delete Operation Timbang record?" : "Delete child record?"}</AlertDialogTitle><AlertDialogDescription>This will permanently delete {deleteChild.name}&apos;s {timbang ? "Operation Timbang " : ""}record. It will no longer appear in this registry or its reports.</AlertDialogDescription></AlertDialogHeader>
+        <AlertDialogHeader><AlertDialogTitle>{timbang ? "Delete Operation Timbang record?" : "Delete child record?"}</AlertDialogTitle><AlertDialogDescription>This will permanently delete the {timbang ? "Operation Timbang " : ""}record for {displayChildName(deleteChild.name, deleteChild.surname, deleteChild.middle_initial, deleteChild.first_name)}. It will no longer appear in this registry or its reports.</AlertDialogDescription></AlertDialogHeader>
         <form action={timbang ? deleteTimbangRecord : deleteChildRecord} data-offline-delete-form data-record-program={program}>
           <input type="hidden" name="childId" value={deleteChild.id} />
           <input type="hidden" name="updatedAt" value={deleteChild.updated_at ?? ""} />

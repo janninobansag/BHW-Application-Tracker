@@ -15,6 +15,9 @@ export type Sitio = { id: string; name: string; barangay_id: string };
 export type Child = {
   id: string;
   name: string;
+  surname?: string;
+  first_name?: string;
+  middle_initial?: string;
   birthday: string;
   sex: "F" | "M";
   parents: string;
@@ -33,3 +36,19 @@ export type TimbangRecord = Child & {
 };
 
 export type ManagedUser = AppUser & { assigned_ids: string | null; assigned_purok_ids: string | null };
+
+export type WorkerRecords = {
+  worker: Pick<AppUser, "id" | "display_name" | "username" | "is_active">;
+  counts: { deworming: number; timbang: number; total: number };
+  records: Array<{
+    id: string;
+    name: string;
+    created_at: string;
+    program: "deworming" | "timbang";
+    barangay_name: string;
+    purok_name: string;
+  }>;
+  page: number;
+  pageCount: number;
+  filteredTotal: number;
+};

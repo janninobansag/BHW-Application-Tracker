@@ -29,7 +29,10 @@ export function AutomaticWorkerRecords({ snapshot, program = "deworming" }: { sn
     const readForm = (element: HTMLFormElement) => {
       const data = new FormData(element);
       const value = (key: string) => String(data.get(key) || "").trim();
-      return { id: value("id"), updatedAt: value("updatedAt"), child: { name: value("name"), birthday: value("birthday"), parents: value("parents"), sex: value("sex"), barangayId: value("barangayId"), purokId: value("purokId"), ...(program === "timbang" ? { weight: value("weight"), height: value("height"), muac: value("muac") } : {}) } };
+      const firstName = value("firstName");
+      const middleInitial = value("middleInitial");
+      const surname = value("surname");
+      return { id: value("id"), updatedAt: value("updatedAt"), child: { name: [firstName, middleInitial, surname].filter(Boolean).join(" "), firstName, middleInitial, surname, birthday: value("birthday"), parents: value("parents"), sex: value("sex"), barangayId: value("barangayId"), purokId: value("purokId"), ...(program === "timbang" ? { weight: value("weight"), height: value("height"), muac: value("muac") } : {}) } };
     };
     const sync = async () => {
       if (syncing || !navigator.onLine || disposed) return;
@@ -68,7 +71,7 @@ export function AutomaticWorkerRecords({ snapshot, program = "deworming" }: { sn
       const element = event.target;
       const deleting = element.hasAttribute("data-offline-delete-form");
       const draft = readForm(element);
-      if (!deleting && !validChildDetails(draft.child)) { setNotice("Check the child's name, birthday, sex, and parents before saving."); return; }
+      if (!deleting && (!draft.child.firstName || !draft.child.surname || (draft.child.middleInitial && !/^\p{L}\.?$/u.test(draft.child.middleInitial)) || !validChildDetails(draft.child))) { setNotice("Check the child's surname, middle initial, first name, birthday, sex, and parents before saving."); return; }
       saving = true;
       const button = element.querySelector<HTMLButtonElement>('button[type="submit"]');
       if (button) button.disabled = true;

@@ -53,7 +53,7 @@ test("automatic worker storage and reconnect sync preserve records", async (t) =
     await prepareWorker(snapshot("two-programs"));
     await queueWorkerChild(child, "shared-id");
     await prepareWorker(snapshot("two-programs"), undefined, "timbang");
-    const measured = { ...child, weight: "12.25", height: "81", muac: "16.5" };
+    const measured = { ...child, name: "Jan Niño M. Bansag", firstName: "Jan Niño", middleInitial: "M.", surname: "Bansag", weight: "12.25", height: "81", muac: "16.5" };
     await queueWorkerChild(measured, "shared-id", undefined, "timbang");
     assert.deepEqual((await readWorkerContents("timbang")).pending[0].child, measured);
     assert.deepEqual((await readWorkerContents()).pending[0].child, child);
@@ -63,6 +63,9 @@ test("automatic worker storage and reconnect sync preserve records", async (t) =
         assert.equal(url, "/api/backend/operation-timbang");
         const body = JSON.parse(init.body);
         assert.equal(body.muac, "16.5");
+        assert.equal(body.firstName, "Jan Niño");
+        assert.equal(body.middleInitial, "M.");
+        assert.equal(body.surname, "Bansag");
         return json({ child: { id: body.id, ...measured, weight: 12.25, height: 81, muac: 16.5, updated_at: "measured-version" } });
       }
       if (url.endsWith("operation-timbang")) return json({ children: [{ id: "shared-id", ...measured, weight: 12.25, height: 81, muac: 16.5, updated_at: "measured-version" }] });

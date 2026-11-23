@@ -12,7 +12,7 @@ import { WorkerOfflineAccess } from "@/Client/views/components/worker-offline-ac
 export function AppShell({ user, title, eyebrow, children, contentClassName = "", headingAside }: {
   user: AppUser; title: string; eyebrow: string; children: React.ReactNode; contentClassName?: string; headingAside?: React.ReactNode;
 }) {
-  const compact = ["Dashboard", "Child records", "Operation Timbang"].includes(title);
+  const compact = ["Dashboard", "Vitamin A & Deworming", "Operation Timbang", "Worker activity"].includes(title);
   const description = compact ? "" : title === "Administration" ? "Your people and communities, in one workspace." : title === "Notifications" ? "Review recent age updates for children in your care." : "Keep each child’s details complete and up to date.";
   return <div className="app-shell">
     <a className="skip-link" href="#workspace-title">Skip to content</a>

@@ -12,7 +12,7 @@ type UserPublic = Omit<User, "password_hash">;
 type Barangay = { id: string; name: string; created_at?: string };
 type Sitio = { id: string; name: string; barangay_id: string; created_at?: string };
 type Purok = { id: string; name: string; barangay_id: string; created_at?: string };
-type Child = { id: string; name: string; birthday: string; sex: "F" | "M"; parents: string; barangay_id: string; purok_id: string; created_by: string; created_at: string; updated_at: string } & Partial<Measurements>;
+type Child = { id: string; name: string; surname?: string; first_name?: string; middle_initial?: string; birthday: string; sex: "F" | "M"; parents: string; barangay_id: string; purok_id: string; created_by: string; created_at: string; updated_at: string } & Partial<Measurements>;
 const recordCollection = (req: Request) => req.path.startsWith("/api/operation-timbang") ? "operation_timbang" : "children";
 const now = () => new Date().toISOString();
 const publicUser = (user: User): UserPublic => {
@@ -342,20 +342,74 @@ router.get("/api/admin/users", requireAdmin, async (_req, res, next) => {
   } catch (error) { return next(error); }
 });
 
+router.get("/api/admin/users/:id/records", requireAdmin, async (req, res, next) => {
+  try {
+    const program = req.query.program === undefined ? "all" : req.query.program;
+    const requestedPage = req.query.page === undefined ? 1 : Number(req.query.page);
+    if (!["all", "deworming", "timbang"].includes(program as string) || !Number.isSafeInteger(requestedPage) || requestedPage < 1) {
+      return message(res, 400, "Choose a valid program and page.");
+    }
+    const db = await getDb();
+    const workerId = String(req.params.id);
+    const worker = await db.collection<User>("users").findOne({ id: workerId, role: "bhw" });
+    if (!worker) return message(res, 404, "BHW account unavailable.");
+
+    const [deworming, timbang] = await Promise.all([
+      db.collection<Child>("children").countDocuments({ created_by: workerId }),
+      db.collection<Child>("operation_timbang").countDocuments({ created_by: workerId }),
+    ]);
+    const total = program === "deworming" ? deworming : program === "timbang" ? timbang : deworming + timbang;
+    const pageSize = 10;
+    const pageCount = Math.max(1, Math.ceil(total / pageSize));
+    const page = Math.min(requestedPage, pageCount);
+    const selectRecords = (label: string) => [
+      { $match: { created_by: workerId } },
+      { $project: { _id: 0, id: 1, name: 1, created_at: 1, barangay_id: 1, purok_id: 1, program: { $literal: label } } },
+    ];
+    const firstCollection = program === "timbang" ? "operation_timbang" : "children";
+    const pipeline: Record<string, unknown>[] = selectRecords(program === "timbang" ? "timbang" : "deworming");
+    if (program === "all") pipeline.push({ $unionWith: { coll: "operation_timbang", pipeline: selectRecords("timbang") } });
+    pipeline.push({ $sort: { created_at: -1, id: -1, program: 1 } }, { $skip: (page - 1) * pageSize }, { $limit: pageSize });
+    const rows = await db.collection<Child>(firstCollection).aggregate<{ id: string; name: string; created_at: string; barangay_id: string; purok_id: string; program: "deworming" | "timbang" }>(pipeline).toArray();
+    const [barangays, puroks] = await Promise.all([
+      db.collection<Barangay>("barangays").find({ id: { $in: [...new Set(rows.map((row) => row.barangay_id))] } }).toArray(),
+      db.collection<Purok>("puroks").find({ id: { $in: [...new Set(rows.map((row) => row.purok_id))] } }).toArray(),
+    ]);
+    const barangayNames = new Map(barangays.map((item) => [item.id, item.name]));
+    const purokNames = new Map(puroks.map((item) => [item.id, item.name]));
+    return res.json({
+      worker: { id: worker.id, display_name: worker.display_name, username: worker.username, is_active: worker.is_active },
+      counts: { deworming, timbang, total: deworming + timbang },
+      records: rows.map((row) => ({ id: row.id, name: row.name, created_at: row.created_at, program: row.program, barangay_name: barangayNames.get(row.barangay_id) ?? "Barangay removed", purok_name: purokNames.get(row.purok_id) ?? "Purok removed" })),
+      page,
+      pageCount,
+      filteredTotal: total,
+    });
+  } catch (error) { return next(error); }
+});
+
 router.post(["/api/children", "/api/operation-timbang"], async (req, res, next) => {
   try {
     const user = res.locals.user as User;
     if (req.body.offlineUserId && (req.body.offlineUserId !== user.id || user.role !== "bhw")) return message(res, 403, "Sign in to the worker account that saved these offline changes.");
-    const { id, name, birthday, sex, parents, barangayId, purokId, expectedUpdatedAt, updatedAt } = req.body;
+    const { id, name, givenName, firstName, middleInitial, surname, birthday, sex, parents, barangayId, purokId, expectedUpdatedAt, updatedAt } = req.body;
+    const newName = Object.prototype.hasOwnProperty.call(req.body, "firstName") || Object.prototype.hasOwnProperty.call(req.body, "middleInitial");
+    const separateName = newName || Object.prototype.hasOwnProperty.call(req.body, "givenName") || Object.prototype.hasOwnProperty.call(req.body, "surname");
+    const cleanGivenName = typeof givenName === "string" ? givenName.trim().replace(/\s+/gu, " ") : "";
+    const cleanFirstName = typeof firstName === "string" ? firstName.trim().replace(/\s+/gu, " ") : "";
+    const inputInitial = typeof middleInitial === "string" ? middleInitial.trim() : "";
+    const cleanInitial = inputInitial ? `${[...inputInitial][0].toLocaleUpperCase("en-PH")}.` : "";
+    const cleanSurname = typeof surname === "string" ? surname.trim().replace(/\s+/gu, " ") : "";
+    const fullName = newName ? [cleanFirstName, cleanInitial, cleanSurname].filter(Boolean).join(" ") : separateName ? `${cleanGivenName} ${cleanSurname}`.trim() : name;
     const hasOfflineVersion = Object.prototype.hasOwnProperty.call(req.body, "expectedUpdatedAt");
     const expectedVersion = hasOfflineVersion ? expectedUpdatedAt : updatedAt;
     const hasExpectedVersion = hasOfflineVersion || (typeof updatedAt === "string" && updatedAt.length > 0);
     const measurements = recordCollection(req) === "operation_timbang" ? parseMeasurements(req.body) : {};
     if (!measurements) return message(res, 400, "Enter weight, height, and MUAC as positive numbers up to 1000 with at most two decimal places, or leave them blank.");
-    if (!validName(name, 120) || !validName(parents, 240) || !validBirthday(birthday) || !["F", "M"].includes(sex) || !(await canAccessBarangay(user, barangayId)) || !(await canAccessPurok(user, purokId, barangayId))) return message(res, 400, "Check the child details and assigned barangay/Purok.");
+    if ((newName && (!validName(cleanFirstName, 100) || (inputInitial && !/^\p{L}\.?$/u.test(inputInitial)))) || (separateName && (!validName(cleanSurname, 100) || (!newName && !validName(cleanGivenName, 100)))) || !validName(fullName, 120) || !validName(parents, 240) || !validBirthday(birthday) || !["F", "M"].includes(sex) || !(await canAccessBarangay(user, barangayId)) || !(await canAccessPurok(user, purokId, barangayId))) return message(res, 400, "Check the child details and assigned barangay/Purok.");
     const db = await getDb();
     const stamp = now();
-    const child: Child = { id: id || randomUUID(), name: name.trim(), birthday, sex, parents: parents.trim(), barangay_id: barangayId, purok_id: purokId, created_by: user.id, created_at: stamp, updated_at: stamp, ...measurements };
+    const child: Child = { id: id || randomUUID(), name: fullName.trim(), ...(separateName ? { surname: cleanSurname } : {}), ...(newName ? { first_name: cleanFirstName, middle_initial: cleanInitial } : {}), birthday, sex, parents: parents.trim(), barangay_id: barangayId, purok_id: purokId, created_by: user.id, created_at: stamp, updated_at: stamp, ...measurements };
     if (id) {
       const existing = await db.collection<Child>(recordCollection(req)).findOne({ id });
       if (!existing) {
@@ -366,7 +420,7 @@ router.post(["/api/children", "/api/operation-timbang"], async (req, res, next) 
       }
       if (!(await canAccessPurok(user, existing.purok_id, existing.barangay_id))) return message(res, 404, "Record unavailable.");
       if (hasOfflineVersion && expectedUpdatedAt === null) {
-        const sameOfflineCreate = existing.created_by === user.id && existing.name === child.name && existing.birthday === child.birthday && existing.sex === child.sex && existing.parents === child.parents && existing.barangay_id === child.barangay_id && existing.purok_id === child.purok_id && (recordCollection(req) !== "operation_timbang" || ["weight", "height", "muac"].every((key) => existing[key as keyof Measurements] === child[key as keyof Measurements]));
+        const sameOfflineCreate = existing.created_by === user.id && existing.name === child.name && existing.surname === child.surname && existing.first_name === child.first_name && existing.middle_initial === child.middle_initial && existing.birthday === child.birthday && existing.sex === child.sex && existing.parents === child.parents && existing.barangay_id === child.barangay_id && existing.purok_id === child.purok_id && (recordCollection(req) !== "operation_timbang" || ["weight", "height", "muac"].every((key) => existing[key as keyof Measurements] === child[key as keyof Measurements]));
         return sameOfflineCreate ? res.json({ message: "Child record was already synced.", child: existing }) : message(res, 409, "A record with this offline ID already exists with different details.");
       }
       if (hasExpectedVersion && (typeof expectedVersion !== "string" || existing.updated_at !== expectedVersion)) return message(res, 409, hasOfflineVersion ? "This record changed online after your offline copy was saved." : "This record changed after you opened it. Reload the record before saving again.");
