@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import "fake-indexeddb/auto";
-import { prepareWorker, prepareWorkerWorkspace, readWorkerContents, queueWorkerChild, queueWorkerDelete, syncWorkerChanges, closeWorkerAccess } from "../public/worker-offline-store.js";
+import { prepareWorker, prepareWorkerWorkspace, readWorkerContents, queueWorkerChild, queueWorkerDelete, queueWorkerHousehold, effectiveHouseholds, syncWorkerChanges, closeWorkerAccess } from "../public/worker-offline-store.js";
 
 const values = new Map();
 Object.defineProperty(globalThis, "localStorage", { value: { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: (key) => values.delete(key) }, configurable: true });
@@ -17,18 +17,21 @@ const snapshot = (id) => ({ user: { id, username: id, display_name: "Worker" }, 
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
 
 test("automatic worker storage and reconnect sync preserve records", async (t) => {
-  await t.test("one online visit prepares both separate registries and keeps pending changes", async () => {
+  await t.test("one online visit prepares three separate registries and keeps pending changes", async () => {
     const initial = snapshot("all-pages");
     globalThis.fetch = async (url) => {
       if (url.endsWith("auth/me")) return json({ user: { ...initial.user, role: "bhw", must_change_password: 0 } });
       if (url.endsWith("children")) return json({ children: [{ id: "vitamin-only", ...child }] });
       if (url.endsWith("operation-timbang")) return json({ children: [{ id: "timbang-only", ...child, weight: 12, height: 81, muac: 16 }] });
+      if (url.endsWith("households")) return json({ households: [] });
+      if (url.endsWith("sitios")) return json({ sitios: [] });
       if (url.endsWith("barangays")) return json({ barangays: initial.barangays });
       return json({ puroks: initial.puroks });
     };
     await prepareWorkerWorkspace("all-pages");
     assert.equal((await readWorkerContents()).snapshot.children[0].id, "vitamin-only");
     assert.equal((await readWorkerContents("timbang")).snapshot.children[0].id, "timbang-only");
+    assert.equal((await readWorkerContents("households")).snapshot.children.length, 0);
     await queueWorkerChild(child, "pending-growth", undefined, "timbang");
     await prepareWorkerWorkspace("all-pages");
     assert.equal((await readWorkerContents("timbang")).pending[0].id, "pending-growth");
@@ -43,11 +46,32 @@ test("automatic worker storage and reconnect sync preserve records", async (t) =
     globalThis.fetch = async (url) => {
       if (url.endsWith("auth/me")) return json({ user: { ...initial.user, role: "bhw", must_change_password: 0 } });
       if (url.endsWith("barangays")) return json({ barangays: initial.barangays });
+      if (url.endsWith("households")) return json({ households: [] });
+      if (url.endsWith("sitios")) return json({ sitios: [] });
       if (url.endsWith("puroks")) { closeWorkerAccess(); return json({ puroks: initial.puroks }); }
       return json({ children: [] });
     };
     await prepareWorkerWorkspace("workspace-signout");
     assert.equal(await readWorkerContents(), null);
+  });
+  await t.test("household profiles use a separate encrypted queue and sync to households", async () => {
+    const initial = { ...snapshot("household-worker"), sitios: [] };
+    await prepareWorker(initial, undefined, "households");
+    const household = { barangayId: "b", purokId: "p", sitioId: "", householdNumber: "Unit 7", respondent: { surname: "Sample", firstName: "Worker", middleName: "" }, visits: ["", "", "", ""], members: [] };
+    await queueWorkerHousehold(household, "house-1");
+    assert.equal(effectiveHouseholds(await readWorkerContents("households"))[0].householdNumber, "Unit 7");
+    assert.equal(await readWorkerContents(), null);
+    globalThis.fetch = async (url, init = {}) => {
+      if (url.endsWith("auth/me")) return json({ user: { id: "household-worker", role: "bhw" } });
+      if (init.method === "POST") { assert.equal(url, "/api/backend/households"); const body = JSON.parse(init.body); assert.equal(body.householdNumber, "Unit 7"); return json({ household: { ...body, updated_at: "server-version" } }); }
+      if (url.endsWith("households")) return json({ households: [{ ...household, id: "house-1", updated_at: "server-version" }] });
+      if (url.endsWith("barangays")) return json({ barangays: initial.barangays });
+      if (url.endsWith("sitios")) return json({ sitios: [] });
+      return json({ puroks: initial.puroks });
+    };
+    await syncWorkerChanges("households");
+    assert.equal((await readWorkerContents("households")).pending.length, 0);
+    assert.equal((await readWorkerContents("households")).snapshot.children[0].id, "house-1");
   });
   await t.test("Operation Timbang uses an independent queue and syncs measurements to its own endpoint", async () => {
     await prepareWorker(snapshot("two-programs"));

@@ -44,7 +44,7 @@
   .timbang-table td.record-location { grid-column: 1 / -1; min-width: 0; margin: 0; border: 0; }
   .timbang-table td.record-location::before { display: none; }
   .timbang-table .record-actions-cell { position: absolute; top: 8px; right: 8px; width: 44px; padding: 0; }
-  .timbang-table .record-menu-trigger { width: 44px; min-height: 44px; height: 44px; border: 1px solid #e0e6dd; border-radius: 4px; background: #fff; }
+  .timbang-table .record-menu-trigger { width: 44px; min-height: 44px; height: 44px; border: 0; background: transparent; }
   .timbang-table .record-mobile-disclosure { display: block; }
   .timbang-table .record-mobile-disclosure summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; list-style: none; cursor: pointer; color: #45664c; font-size: .78rem; font-weight: 600; }
   .timbang-table .record-mobile-disclosure summary::-webkit-details-marker { display: none; }

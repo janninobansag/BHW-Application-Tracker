@@ -1,6 +1,6 @@
 import "server-only";
 import { backendJson, backendRequest } from "./api-client";
-import type { AppUser, Barangay, Child, ManagedUser, Purok, Sitio, TimbangRecord, WorkerRecords } from "./entities";
+import type { AppUser, Barangay, Child, HouseholdProfile, ManagedUser, Purok, Sitio, TimbangRecord, WorkerRecords } from "./entities";
 export type { Barangay, Child, ManagedUser, Purok, Sitio } from "./entities";
 
 export async function isSetupComplete(): Promise<boolean> {
@@ -44,4 +44,15 @@ export async function getWorkerRecords(id: string, program: "all" | "deworming" 
 
 export async function listTimbangRecords(_user: AppUser): Promise<TimbangRecord[]> {
   return (await backendJson<{ children: TimbangRecord[] }>("/operation-timbang")).children;
+}
+
+export async function listHouseholdProfiles(_user: AppUser): Promise<HouseholdProfile[]> {
+  return (await backendJson<{ households: HouseholdProfile[] }>("/households")).households;
+}
+
+export async function getHouseholdProfile(id: string): Promise<HouseholdProfile | null> {
+  const response = await backendRequest(`/households/${encodeURIComponent(id)}`);
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Render API request failed (${response.status})`);
+  return (await response.json() as { household: HouseholdProfile }).household;
 }

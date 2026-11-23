@@ -1,4 +1,5 @@
 import { activeWorkerId, readWorkerContents, effectiveWorkerRecords, prepareWorkerWorkspace, syncAllWorkerChanges } from "/worker-offline-store.js";
+import { renderOfflineHouseholds } from "/offline-households.js";
 
 const $ = (id) => document.getElementById(id);
 function element(tag, className = "", text = "") {
@@ -7,7 +8,7 @@ function element(tag, className = "", text = "") {
 function link(href, text, className = "") { const node = element("a", className, text); node.href = href; return node; }
 function age(birthday, today) { const [y,m,d] = today.split("-").map(Number); const [by,bm,bd] = birthday.split("-").map(Number); return (y-by)*12+m-bm-(d<bd?1:0); }
 function today() { return new Intl.DateTimeFormat("en-CA", { timeZone:"Asia/Manila", year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date()); }
-const destinations = [["/dashboard", "Dashboard"], ["/", "Vitamin A & Deworming"], ["/worker-portfolio", "Health Worker Portfolio Summary"], ["/operation-timbang", "Operation Timbang"], ["/notifications", "Notifications"]];
+const destinations = [["/dashboard", "Dashboard"], ["/", "Vitamin A & Deworming"], ["/worker-portfolio", "Household Profiling"], ["/operation-timbang", "Operation Timbang"], ["/notifications", "Notifications"]];
 
 function navigation(route) {
   const nav = document.querySelector(".sidebar .side-nav");
@@ -91,7 +92,7 @@ export async function mountOfflineWorkspace(route) {
   let copies;
   const userId=activeWorkerId();
   try {
-    copies=await Promise.all([readWorkerContents(),readWorkerContents("timbang")]);
+    copies=await Promise.all([readWorkerContents(),readWorkerContents("timbang"),readWorkerContents("households")]);
     if(!userId||activeWorkerId()!==userId||!copies.some(Boolean))throw new Error("Sign in as a worker while online once to save both registries on this device.");
   }catch(error){$("access-loading").hidden=true;$("access-content").hidden=false;$("access-message").textContent=error.message;$("access-message").hidden=false;return false;}
   const current=copies[route.program==="timbang"?1:0];const identity=copies.find(Boolean).snapshot.user;
@@ -106,11 +107,14 @@ export async function mountOfflineWorkspace(route) {
   if(route.view==="registry"&&current)return true;
   document.querySelector(".stats-grid").hidden=true;$("registry-grid").hidden=true;$("snapshot-date").hidden=true;$("conflicts").hidden=true;
   const root=element("div","worker-dashboard");document.querySelector("main.content").append(root);
+  let editorRendered=false;
   function render(){
+    if(route.view==="portfolio"&&route.recordId&&editorRendered)return;
     root.replaceChildren();
     if(!current&&route.view==="registry")root.append(element("p","notice","This registry has not been saved on this device yet. Connect once to download it; your other pages remain available."));
     else if(route.view==="dashboard")dashboard(root,copies);
     else if(route.view==="notifications")notifications(root,copies[0],userId);
+    else if(route.view==="portfolio") { renderOfflineHouseholds(root,copies[2],route,()=>location.assign("/offline.html?view=portfolio")); editorRendered=Boolean(route.recordId); }
     else root.append(element("p","panel workspace-coming-soon","Coming soon"));
     const pending=copies.reduce((sum,copy)=>sum+(copy?.pending.length||0),0);
     $("connection-status").textContent=navigator.onLine?"Online":"Offline";$("count-pending").textContent=pending?`${pending} changes waiting to sync`:"";$("sync-button").hidden=!pending;$("sync-button").disabled=!navigator.onLine;
@@ -121,7 +125,7 @@ export async function mountOfflineWorkspace(route) {
     busy=true;try{
       if(copies.some(copy=>!copy))await prepareWorkerWorkspace(userId,()=>activeWorkerId()===userId);
       await syncAllWorkerChanges();
-      copies=await Promise.all([readWorkerContents(),readWorkerContents("timbang")]);
+      copies=await Promise.all([readWorkerContents(),readWorkerContents("timbang"),readWorkerContents("households")]);
       if(activeWorkerId()!==userId)return;
       if(route.view==="registry"&&copies[route.program==="timbang"?1:0]){location.reload();return;}
       const key=`bhw-age-notifications:${userId}`;let ids=[];try{ids=JSON.parse(localStorage.getItem(key)||"[]");}catch{}

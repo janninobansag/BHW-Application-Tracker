@@ -16,7 +16,7 @@ export function WorkerOfflineAccess({ userId }: { userId: string }) {
       busy = true;
       try {
         if (!prepared) { await prepareWorkerWorkspace(userId, () => !disposed); prepared = true; }
-        const copies = await Promise.all([readWorkerContents(), readWorkerContents("timbang")]);
+        const copies = await Promise.all([readWorkerContents(), readWorkerContents("timbang"), readWorkerContents("households")]);
         if (copies.some((copy) => copy?.pending.length)) await syncAllWorkerChanges();
       } catch { /* Registry controls keep their existing local-save and retry feedback. */ }
       finally { busy = false; }
@@ -30,7 +30,7 @@ export function WorkerOfflineAccess({ userId }: { userId: string }) {
     };
     const disconnected = () => {
       // Registry pages save any open form before switching themselves.
-      if (pathname === "/" || pathname.startsWith("/records/") || pathname.startsWith("/operation-timbang")) return;
+      if (pathname === "/" || pathname.startsWith("/records/") || pathname.startsWith("/operation-timbang") || pathname.startsWith("/worker-portfolio/")) return;
       const target = workerOfflineUrl(new URL(location.href));
       if (target) location.replace(target);
     };

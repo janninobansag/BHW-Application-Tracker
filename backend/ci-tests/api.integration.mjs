@@ -2,6 +2,7 @@ import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { strFromU8, unzipSync } from "fflate";
+import { PDFDocument } from "pdf-lib";
 
 let server;
 let database;
@@ -137,6 +138,29 @@ test("authenticated worker CRUD, assignment access, and filtered Excel export", 
   assert.equal(createChild.status, 200);
   const created = (await createChild.json()).child;
   assert.equal(created.name, "Test Child");
+  const member = { id: randomUUID(), surname: "Sample", firstName: "Member", middleName: "", relationship: "Head", sex: "F", birthday: "2020-02-29", heightCm: "", weightKg: "", birthPlace: "", classifications: ["", "", "", ""], religion: "", civilStatus: "", education: "", nipStatus: "", covidStatus: "", profileRemarks: "", philhealthId: "", membershipType: "", nutritionStatus: "", sexuallyActive: "", lastMenstrualPeriod: "", familyPlanningMethod: "", cancer: "", mentalHealth: "", hypertension: "", diabetes: "", tbDots: "", healthRemarks: "" };
+  const householdInput = { barangayId: barangay.id, purokId: purok.id, sitioId: sitio.id, householdNumber: "Test Unit 1", respondent: { surname: "Sample", firstName: "Respondent", middleName: "" }, respondentRelationship: "Head", visits: ["2026-01-10", "", "", ""], nhts: "non-nhts", indigenous: "non-ip", tribe: "", headPhilhealth: "", headPhilhealthId: "", headPhilhealthCategory: "", income: "C", renter: "no", renterMonths: "", waterSource: "level-3", waterSourceOther: "", toiletType: "A", wasteMethod: "D", blindDrainage: "no", hazards: [], hazardOther: "", interviewedBy: "Integration Worker", reviewedBy: "", encodedBy: "", dateEncoded: "", members: [member] };
+  assert.equal((await request("/api/households", { cookie: workerLogin.cookie })).status, 200);
+  const outsideHousehold = await request("/api/households", { method: "POST", cookie: workerLogin.cookie, body: { ...householdInput, purokId: otherPurok.id } });
+  assert.equal(outsideHousehold.status, 403, "households must stay within the worker's assigned Purok");
+  const createdHousehold = await request("/api/households", { method: "POST", cookie: workerLogin.cookie, body: householdInput });
+  assert.equal(createdHousehold.status, 200);
+  const household = (await createdHousehold.json()).household;
+  assert.equal(household.householdNumber, "Test Unit 1");
+  const listedHouseholds = (await (await request("/api/households", { cookie: workerLogin.cookie })).json()).households;
+  assert.equal(listedHouseholds.find((item) => item.id === household.id)?.sitio_name, "Springwoods");
+  const householdPdf = await request(`/api/households/${household.id}/pdf`, { cookie: workerLogin.cookie });
+  assert.equal(householdPdf.status, 200);
+  const printed = await PDFDocument.load(await householdPdf.arrayBuffer());
+  assert.equal(printed.getPageCount(), 2);
+  const staleHousehold = await request("/api/households", { method: "POST", cookie: workerLogin.cookie, body: { ...householdInput, id: household.id, expectedUpdatedAt: "old-version" } });
+  assert.equal(staleHousehold.status, 409);
+  const updatedHousehold = await request("/api/households", { method: "POST", cookie: workerLogin.cookie, body: { ...householdInput, id: household.id, householdNumber: "Test Unit 2", expectedUpdatedAt: household.updated_at } });
+  assert.equal(updatedHousehold.status, 200);
+  const changedHousehold = (await updatedHousehold.json()).household;
+  assert.equal((await request(`/api/admin/sitios/${sitio.id}`, { method: "DELETE", cookie: admin.cookie, body: {} })).status, 409);
+  assert.equal((await request(`/api/households/${household.id}`, { method: "DELETE", cookie: workerLogin.cookie, body: { expectedUpdatedAt: changedHousehold.updated_at } })).status, 200);
+  assert.equal((await request(`/api/households/${household.id}`, { cookie: workerLogin.cookie })).status, 404);
   for (const field of ["id", "barangayId", "purokId"]) {
     const injected = await request("/api/children", { method: "POST", cookie: workerLogin.cookie, body: { name: "Injected", birthday: created.birthday, sex: "M", parents: "Guardian", barangayId: barangay.id, purokId: purok.id, [field]: { $ne: null } } });
     assert.equal(injected.status, 400, "query operators must never reach record lookups");
