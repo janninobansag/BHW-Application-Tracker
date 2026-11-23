@@ -38,7 +38,7 @@ function exclusive(operation) {
   return navigator.locks.request("bhw-worker-offline", operation);
 }
 
-const storageId = (userId, program) => program === "timbang" ? `${userId}:timbang` : userId;
+const storageId = (userId, program) => program === "timbang" || program === "households" ? `${userId}:${program}` : userId;
 
 async function read(userId, program = "deworming") {
   const record = await stored(storageId(userId, program));
@@ -83,13 +83,14 @@ export async function prepareWorkerWorkspace(expectedUserId, isCurrent = () => t
   };
   const identity = await request("auth/me");
   if (identity.user?.id !== expectedUserId || identity.user.role !== "bhw" || identity.user.must_change_password) throw new Error("Offline records are available only to signed-in workers.");
-  const [children, timbang, barangays, puroks] = await Promise.all([request("children"), request("operation-timbang"), request("barangays"), request("puroks")]);
-  if (![children.children, timbang.children, barangays.barangays, puroks.puroks].every(Array.isArray)) throw new Error("Could not prepare offline records.");
+  const [children, timbang, households, barangays, puroks, sitios] = await Promise.all([request("children"), request("operation-timbang"), request("households"), request("barangays"), request("puroks"), request("sitios")]);
+  if (![children.children, timbang.children, households.households, barangays.barangays, puroks.puroks, sitios.sitios].every(Array.isArray)) throw new Error("Could not prepare offline records.");
   const current = () => isCurrent() && localStorage.getItem(ACCESS_VERSION) === version;
   if (!current()) return;
-  const snapshot = { user: { id: identity.user.id, username: identity.user.username, display_name: identity.user.display_name }, barangays: barangays.barangays, puroks: puroks.puroks, savedAt: new Date().toISOString() };
+  const snapshot = { user: { id: identity.user.id, username: identity.user.username, display_name: identity.user.display_name }, barangays: barangays.barangays, puroks: puroks.puroks, sitios: sitios.sitios, savedAt: new Date().toISOString() };
   await prepareWorker({ ...snapshot, children: children.children }, current);
   if (current()) await prepareWorker({ ...snapshot, children: timbang.children }, current, "timbang");
+  if (current()) await prepareWorker({ ...snapshot, children: households.households }, current, "households");
 }
 
 export function effectiveWorkerRecords(contents) {
@@ -107,8 +108,22 @@ export function effectiveWorkerRecords(contents) {
   return [...records.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
+export function effectiveHouseholds(contents) {
+  if (!contents) return [];
+  const records = new Map(contents.snapshot.children.map((item) => [item.id, { ...item }]));
+  for (const pending of contents.pending) {
+    if (pending.kind === "delete") records.delete(pending.id);
+    else records.set(pending.id, { ...records.get(pending.id), ...pending.child, id: pending.id,
+      barangay_name: contents.snapshot.barangays.find((item) => item.id === pending.child.barangayId)?.name || "",
+      purok_name: contents.snapshot.puroks.find((item) => item.id === pending.child.purokId)?.name || "",
+      sitio_name: contents.snapshot.sitios?.find((item) => item.id === pending.child.sitioId)?.name || "",
+      updated_at: pending.queuedAt });
+  }
+  return [...records.values()].sort((a, b) => a.householdNumber.localeCompare(b.householdNumber));
+}
+
 export async function syncAllWorkerChanges() {
-  const results = await Promise.allSettled([syncWorkerChanges(), syncWorkerChanges("timbang")]);
+  const results = await Promise.allSettled([syncWorkerChanges(), syncWorkerChanges("timbang"), syncWorkerChanges("households")]);
   const failure = results.find((result) => result.status === "rejected");
   if (failure) throw failure.reason;
   return results.map((result) => result.value);
@@ -144,7 +159,7 @@ export async function queueWorkerDelete(id, expectedUpdatedAt, program = "deworm
     const original = contents.snapshot.children.find((item) => item.id === id);
     const queued = contents.pending.find((item) => item.id === id);
     if (!original && !queued) throw new Error("This record is no longer available on this device.");
-    const details = queued?.child || { name: original.name, ...(original.surname ? { surname: original.surname } : {}), birthday: original.birthday, sex: original.sex, parents: original.parents, barangayId: original.barangay_id, purokId: original.purok_id, ...(program === "timbang" ? { weight: original.weight, height: original.height, muac: original.muac } : {}) };
+    const details = queued?.child || (program === "households" ? original : { name: original.name, ...(original.surname ? { surname: original.surname } : {}), birthday: original.birthday, sex: original.sex, parents: original.parents, barangayId: original.barangay_id, purokId: original.purok_id, ...(program === "timbang" ? { weight: original.weight, height: original.height, muac: original.muac } : {}) });
     contents.pending = contents.pending.filter((item) => item.id !== id);
     // A queued create may already have reached the server before its response was lost.
     // Always keep a delete operation so a later sync can safely remove that same ID.
@@ -154,6 +169,14 @@ export async function queueWorkerDelete(id, expectedUpdatedAt, program = "deworm
   }, program);
 }
 
+export async function queueWorkerHousehold(profile, id = crypto.randomUUID(), expectedUpdatedAt) {
+  return queueWorkerChild(profile, id, expectedUpdatedAt, "households");
+}
+
+export async function queueWorkerHouseholdDelete(id, expectedUpdatedAt) {
+  return queueWorkerDelete(id, expectedUpdatedAt, "households");
+}
+
 export async function syncWorkerChanges(program = "deworming") {
   if (!navigator.onLine) return readWorkerContents(program);
   return exclusive(async () => {
@@ -161,7 +184,7 @@ export async function syncWorkerChanges(program = "deworming") {
     const current = userId && await read(userId, program);
     if (!current) return null;
     const { record, contents } = current;
-    const endpoint = program === "timbang" ? "operation-timbang" : "children";
+    const endpoint = program === "timbang" ? "operation-timbang" : program === "households" ? "households" : "children";
     const request = (path, init = {}) => fetch(`/api/backend/${path}`, { ...init, credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(20000) });
     const me = await request("auth/me");
     const identity = await me.json().catch(() => ({}));
@@ -172,13 +195,13 @@ export async function syncWorkerChanges(program = "deworming") {
       const deleting = pending.kind === "delete";
       const response = await request(deleting ? `${endpoint}/${encodeURIComponent(pending.id)}` : endpoint, {
         method: deleting ? "DELETE" : "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify(deleting ? { updatedAt: pending.expectedUpdatedAt, offlineUserId: userId, offlineCreatedChild: pending.expectedUpdatedAt === null ? pending.child : undefined } : { id: pending.id, ...pending.child, expectedUpdatedAt: pending.expectedUpdatedAt, offlineUserId: userId }),
+        body: JSON.stringify(deleting ? (program === "households" ? { expectedUpdatedAt: pending.expectedUpdatedAt, offlineUserId: userId, offlineCreatedHousehold: pending.expectedUpdatedAt === null ? pending.child : undefined } : { updatedAt: pending.expectedUpdatedAt, offlineUserId: userId, offlineCreatedChild: pending.expectedUpdatedAt === null ? pending.child : undefined }) : { id: pending.id, ...pending.child, expectedUpdatedAt: pending.expectedUpdatedAt, offlineUserId: userId }),
       });
       const result = await response.json().catch(() => ({}));
       if (response.status === 409) {
         const remoteResponse = await request(endpoint);
         if (!remoteResponse.ok) throw new Error("Could not check the online record. Please retry sync.");
-        const remote = (await remoteResponse.json()).children.find((item) => item.id === pending.id) || null;
+        const remote = ((await remoteResponse.json())[program === "households" ? "households" : "children"] || []).find((item) => item.id === pending.id) || null;
         contents.conflicts.push({ id: pending.id, remote, detectedAt: new Date().toISOString() });
         await persist(record, contents);
         continue;
@@ -190,15 +213,15 @@ export async function syncWorkerChanges(program = "deworming") {
         await persist(record, contents);
         continue;
       }
-      const child = { ...result.child, barangay_name: contents.snapshot.barangays.find((item) => item.id === pending.child.barangayId)?.name || "", purok_name: contents.snapshot.puroks.find((item) => item.id === pending.child.purokId)?.name || "" };
+      const child = { ...(program === "households" ? result.household : result.child), barangay_name: contents.snapshot.barangays.find((item) => item.id === pending.child.barangayId)?.name || "", purok_name: contents.snapshot.puroks.find((item) => item.id === pending.child.purokId)?.name || "" };
       contents.snapshot.children = [...contents.snapshot.children.filter((item) => item.id !== pending.id), child];
       contents.pending = contents.pending.filter((item) => item.id !== pending.id);
       await persist(record, contents);
     }
-    const responses = await Promise.all([endpoint, "barangays", "puroks"].map((path) => request(path)));
+    const responses = await Promise.all([endpoint, "barangays", "puroks", ...(program === "households" ? ["sitios"] : [])].map((path) => request(path)));
     if (responses.every((response) => response.ok)) {
-      const [children, barangays, puroks] = await Promise.all(responses.map((response) => response.json()));
-      contents.snapshot = { ...contents.snapshot, children: children.children, barangays: barangays.barangays, puroks: puroks.puroks, savedAt: new Date().toISOString() };
+      const [children, barangays, puroks, sitios] = await Promise.all(responses.map((response) => response.json()));
+      contents.snapshot = { ...contents.snapshot, children: program === "households" ? children.households : children.children, barangays: barangays.barangays, puroks: puroks.puroks, ...(program === "households" ? { sitios: sitios.sitios } : {}), savedAt: new Date().toISOString() };
       await persist(record, contents);
     }
     return contents;

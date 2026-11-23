@@ -16,7 +16,7 @@ export function MobileNavigation({ user }: { user: AppUser }) {
       <nav aria-label="Workspace navigation">
         <Link href="/dashboard" onClick={() => setOpen(false)} aria-current={pathname === "/dashboard" ? "page" : undefined}><LayoutDashboard aria-hidden="true" /><span>Dashboard</span></Link>
         <Link href="/" onClick={() => setOpen(false)} aria-current={pathname === "/" || pathname.startsWith("/records/") ? "page" : undefined}><ClipboardList aria-hidden="true" /><span>Vitamin A &amp; Deworming</span></Link>
-        <Link href="/worker-portfolio" onClick={() => setOpen(false)} aria-current={pathname === "/worker-portfolio" ? "page" : undefined}><ContactRound aria-hidden="true" /><span>Health Worker Portfolio Summary</span></Link>
+        <Link href="/worker-portfolio" onClick={() => setOpen(false)} aria-current={pathname === "/worker-portfolio" ? "page" : undefined}><ContactRound aria-hidden="true" /><span>Household Profiling</span></Link>
         <Link href="/operation-timbang" onClick={() => setOpen(false)} aria-current={pathname === "/operation-timbang" ? "page" : undefined}><Scale aria-hidden="true" /><span>Operation Timbang</span></Link>
         {user.role === "admin" && <Link href="/admin" onClick={() => setOpen(false)} aria-current={pathname === "/admin" ? "page" : undefined}><Settings aria-hidden="true" /><span>Administration</span></Link>}
       </nav>
