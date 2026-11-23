@@ -15,6 +15,9 @@ export type Sitio = { id: string; name: string; barangay_id: string };
 export type Child = {
   id: string;
   name: string;
+  surname?: string;
+  first_name?: string;
+  middle_initial?: string;
   birthday: string;
   sex: "F" | "M";
   parents: string;

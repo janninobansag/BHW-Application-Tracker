@@ -4,6 +4,7 @@ import { listBarangays, listChildren, listPuroks, listSitios } from "@/Data/repo
 import { saveChild } from "@/Client/controllers/actions";
 import { ChildAgeInput } from "@/Client/views/components/child-age-input";
 import { ChildLocationFields } from "@/Client/views/components/child-location-fields";
+import { ChildNameFields } from "@/Client/views/components/child-name-fields";
 import { ChildRegistry } from "@/Client/views/components/child-registry";
 import { AppShell } from "@/Client/views/components/shell";
 import { FeedbackDialog } from "@/Client/views/components/feedback-dialog";
@@ -35,7 +36,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
     <ChildRegistry key={children.map((child) => `${child.id}:${child.updated_at}`).join(",")} records={children} barangays={barangays} puroks={puroks} sitios={sitios} today={today} initialQuery={q} initialBarangayId={barangay} initialPurokId={purok} initialAgeFilter={age}>
       <section className="panel form-panel"><p className="eyebrow">New record</p><h2>Add a child</h2><p className="muted">Keep names and birthdays accurate for monthly reporting.</p>
         {barangays.length ? <form action={saveChild} className="form-stack" data-offline-draft-form>
-          <div className="field"><label htmlFor="name">Child&apos;s name</label><input id="name" name="name" maxLength={120} required /></div>
+          <ChildNameFields />
           <ChildAgeInput today={today} />
           <div className="field"><label htmlFor="sex">Sex</label><select id="sex" name="sex" required defaultValue=""><option value="" disabled>Select F or M</option><option value="F">F - Female</option><option value="M">M - Male</option></select></div>
           <div className="field"><label htmlFor="parents">Parents&apos; names</label><input id="parents" name="parents" maxLength={240} required /></div>

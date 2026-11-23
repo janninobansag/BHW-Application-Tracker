@@ -6,6 +6,7 @@ import { AppShell } from "@/Client/views/components/shell";
 import { ChildRegistry } from "@/Client/views/components/child-registry";
 import { ChildAgeInput } from "@/Client/views/components/child-age-input";
 import { ChildLocationFields } from "@/Client/views/components/child-location-fields";
+import { ChildNameFields } from "@/Client/views/components/child-name-fields";
 import { TimbangMeasurements } from "@/Client/views/components/timbang-measurements";
 import { FeedbackDialog } from "@/Client/views/components/feedback-dialog";
 import { AutomaticWorkerRecords } from "@/Client/views/components/automatic-worker-records";
@@ -25,7 +26,7 @@ export default async function OperationTimbangPage({ searchParams }: { searchPar
       <section className="panel form-panel">
         {barangays.length ? <form action={saveTimbangRecord} className="form-stack timbang-record-form" data-record-program="timbang" data-offline-draft-form>
           <fieldset className="timbang-child-fields"><legend>Child details</legend>
-          <div className="field"><label htmlFor="name">Child&apos;s name</label><input id="name" name="name" maxLength={120} required /></div>
+          <ChildNameFields />
           <ChildAgeInput today={today} inputId="timbang-birthday" />
           <div className="field"><label htmlFor="sex">Sex</label><select id="sex" name="sex" required defaultValue=""><option value="" disabled>Select F or M</option><option value="F">F - Female</option><option value="M">M - Male</option></select></div>
           <div className="field"><label htmlFor="parents">Parent / guardian</label><input id="parents" name="parents" maxLength={240} required /></div>

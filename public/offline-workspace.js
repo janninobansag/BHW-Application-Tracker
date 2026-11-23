@@ -93,7 +93,7 @@ export async function mountOfflineWorkspace(route) {
   try {
     copies=await Promise.all([readWorkerContents(),readWorkerContents("timbang")]);
     if(!userId||activeWorkerId()!==userId||!copies.some(Boolean))throw new Error("Sign in as a worker while online once to save both registries on this device.");
-  }catch(error){$("access-message").textContent=error.message;$("access-message").hidden=false;return false;}
+  }catch(error){$("access-loading").hidden=true;$("access-content").hidden=false;$("access-message").textContent=error.message;$("access-message").hidden=false;return false;}
   const current=copies[route.program==="timbang"?1:0];const identity=copies.find(Boolean).snapshot.user;
   navigation(route);
   $("workspace-title").textContent=route.title;document.title=`${route.title} | BHW Records`;
@@ -131,6 +131,6 @@ export async function mountOfflineWorkspace(route) {
   }
   $("account-button").addEventListener("click",()=>$("account-dialog").showModal());$("account-close").addEventListener("click",()=>$("account-dialog").close());
   $("sync-button").addEventListener("click",refresh);window.addEventListener("online",refresh);window.addEventListener("focus",refresh);window.addEventListener("offline",render);
-  window.addEventListener("storage",()=>{if(activeWorkerId()!==userId){$("workspace").hidden=true;$("access-panel").hidden=false;root.replaceChildren();}});
+  window.addEventListener("storage",()=>{if(activeWorkerId()!==userId){$("workspace").hidden=true;$("access-loading").hidden=true;$("access-content").hidden=false;$("access-panel").hidden=false;root.replaceChildren();}});
   setInterval(refresh,30000);render();if(navigator.onLine)void refresh();return false;
 }

@@ -1,6 +1,7 @@
 import { activeWorkerId, readWorkerContents as readContents, queueWorkerChild as queueChild, queueWorkerDelete as queueDelete, changeWorkerContents as changeContents, syncAllWorkerChanges } from "/worker-offline-store.js";
 import { workerRoute } from "/offline-routing.js";
 import { mountOfflineWorkspace } from "/offline-workspace.js";
+import { compareChildNames, displayChildName, splitChildName } from "/child-name.js";
 
 (async () => {
   const $ = (id) => document.getElementById(id);
@@ -105,6 +106,9 @@ import { mountOfflineWorkspace } from "/offline-workspace.js";
         ...existing,
         id: pending.id,
         name: pending.child.name,
+        surname: pending.child.surname,
+        ...(pending.child.firstName !== undefined ? { first_name: pending.child.firstName } : {}),
+        ...(pending.child.middleInitial !== undefined ? { middle_initial: pending.child.middleInitial } : {}),
         birthday: pending.child.birthday,
         sex: pending.child.sex,
         parents: pending.child.parents,
@@ -116,7 +120,7 @@ import { mountOfflineWorkspace } from "/offline-workspace.js";
         ...(timbang ? { weight: pending.child.weight, height: pending.child.height, muac: pending.child.muac } : {}),
       });
     }
-    return [...records.values()].sort((a, b) => a.name.localeCompare(b.name));
+    return [...records.values()].sort((a, b) => compareChildNames(a.name, b.name, a.surname, b.surname));
   }
 
   function setCounts(records) {
@@ -142,7 +146,7 @@ import { mountOfflineWorkspace } from "/offline-workspace.js";
 
   function askDelete(child) {
     deleteTarget = child;
-    $("delete-description").textContent = `Delete ${child.name}'s record? The record will be removed from this device and deleted from the database when connected.`;
+    $("delete-description").textContent = `Delete the record for ${displayChildName(child.name, child.surname, child.middle_initial, child.first_name)}? It will be removed from this device and deleted from the database when connected.`;
     $("delete-dialog").showModal();
   }
 
@@ -173,7 +177,7 @@ import { mountOfflineWorkspace } from "/offline-workspace.js";
     const purok = $("filter-purok").value;
     const pendingIds = new Set(contents.pending.map((item) => item.id));
     const ageFilter = document.querySelector('input[name="age"]:checked')?.value || "";
-    const records = currentRecords().filter((child) => `${child.name} ${child.parents}`.toLowerCase().includes(query) && (!barangay || child.barangay_id === barangay) && (!purok || child.purok_id === purok) && (!ageFilter || (ageFilter === "73-plus" ? ageInMonths(child.birthday) >= 73 : ageFilter === "under-6" ? ageInMonths(child.birthday) < 6 : ageInMonths(child.birthday) >= 60)));
+    const records = currentRecords().filter((child) => `${child.name} ${displayChildName(child.name, child.surname, child.middle_initial, child.first_name)} ${child.parents}`.toLowerCase().includes(query) && (!barangay || child.barangay_id === barangay) && (!purok || child.purok_id === purok) && (!ageFilter || (ageFilter === "73-plus" ? ageInMonths(child.birthday) >= 73 : ageFilter === "under-6" ? ageInMonths(child.birthday) < 6 : ageInMonths(child.birthday) >= 60)));
     const pages = Math.max(1, Math.ceil(records.length / 8));
     page = Math.min(page, pages);
     const first = (page - 1) * 8;
@@ -181,7 +185,7 @@ import { mountOfflineWorkspace } from "/offline-workspace.js";
     for (const child of records.slice(first, first + 8)) {
       const row = document.createElement("tr");
       const name = makeText("th", "record-child", ""); name.scope = "row";
-      name.append(makeText("strong", "", child.name), makeText("small", "", `Born ${timbang ? child.birthday.split("-").slice(1).concat(child.birthday.split("-")[0]).join("/") : child.birthday}`));
+      name.append(makeText("strong", "", displayChildName(child.name, child.surname, child.middle_initial, child.first_name)), makeText("small", "", `Born ${timbang ? child.birthday.split("-").slice(1).concat(child.birthday.split("-")[0]).join("/") : child.birthday}`));
       if (pendingIds.has(child.id)) name.append(makeText("small", "record-pending", "Waiting to sync"));
       const age = makeText("td", "record-age", `${ageInMonths(child.birthday)} months`); age.dataset.label = "Age";
       const sex = makeText("td", "record-sex", ""); sex.dataset.label = "Sex"; sex.append(makeText("span", `sex-pill ${child.sex === "F" ? "sex-pill-female" : "sex-pill-male"}`, child.sex));
@@ -201,7 +205,7 @@ import { mountOfflineWorkspace } from "/offline-workspace.js";
       disclosure.append(details);
       location.append(desktopLocation, disclosure);
       const actions = makeText("td", "record-actions-cell", "");
-      const trigger = makeText("button", "record-menu-trigger", "..."); trigger.type = "button"; trigger.setAttribute("aria-label", `Actions for ${child.name}`); trigger.setAttribute("aria-haspopup", "true"); trigger.setAttribute("aria-expanded", "false");
+      const trigger = makeText("button", "record-menu-trigger", "..."); trigger.type = "button"; trigger.setAttribute("aria-label", `Actions for ${displayChildName(child.name, child.surname, child.middle_initial, child.first_name)}`); trigger.setAttribute("aria-haspopup", "true"); trigger.setAttribute("aria-expanded", "false");
       trigger.addEventListener("contextmenu", (event) => event.preventDefault());
       const menu = makeText("div", "record-menu-content cached-menu-content", ""); menu.setAttribute("popover", "auto");
       const edit = makeText("button", "record-menu-item", "Edit"); edit.type = "button";
@@ -278,7 +282,10 @@ import { mountOfflineWorkspace } from "/offline-workspace.js";
     form.reset();
     $("record-id").value = child?.id || "";
     $("record-version").value = child?.updated_at || contents.snapshot.children.find((item) => item.id === child?.id)?.updated_at || "";
-    $("child-name").value = child?.name || "";
+    const childName = child ? splitChildName(child.name, child.surname, child.middle_initial, child.first_name) : { firstName: "", middleInitial: "", surname: "" };
+    $("child-name").value = childName.firstName;
+    $("child-surname").value = childName.surname;
+    $("child-middle-initial").value = childName.middleInitial;
     $("child-birthday").value = child?.birthday || "";
     $("child-birthday").max = todayInManila();
     updateBirthdayHint();
@@ -298,12 +305,13 @@ import { mountOfflineWorkspace } from "/offline-workspace.js";
       $("new-record-button").setAttribute("aria-expanded", "true");
       $("new-record-button").textContent = "Close new record";
       $("record-editor").scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
-      $("child-name").focus({ preventScroll: true });
+      $("child-surname").focus({ preventScroll: true });
     }
   }
 
   function validateChild(child) {
-    if (!child.name.trim() || child.name.trim().length > 120) return "Enter a child name under 120 characters.";
+    if (!child.firstName?.trim() || !child.surname?.trim() || child.name.length > 120) return "Enter the child's surname and first name (120 characters combined).";
+    if (child.middleInitial && !/^\p{L}\.?$/u.test(child.middleInitial)) return "Enter one letter for the middle initial, or leave it blank.";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(child.birthday) || child.birthday > todayInManila()) return "Enter a valid birthday that is not in the future.";
     const date = new Date(`${child.birthday}T00:00:00Z`);
     if (Number.isNaN(date.valueOf()) || date.toISOString().slice(0, 10) !== child.birthday) return "Enter a valid birthday.";
@@ -317,7 +325,10 @@ import { mountOfflineWorkspace } from "/offline-workspace.js";
   async function saveChild(event) {
     event.preventDefault();
     const child = {
-      name: $("child-name").value.trim(),
+      name: [$("child-name").value.trim(), $("child-middle-initial").value.trim(), $("child-surname").value.trim()].filter(Boolean).join(" "),
+      firstName: $("child-name").value.trim(),
+      middleInitial: $("child-middle-initial").value.trim(),
+      surname: $("child-surname").value.trim(),
       birthday: $("child-birthday").value,
       sex: $("child-sex").value,
       parents: $("child-parents").value.trim(),
@@ -357,16 +368,16 @@ import { mountOfflineWorkspace } from "/offline-workspace.js";
       const refreshed = await syncWorkerChanges();
       if (!refreshed || activeWorkerId() !== openedUserId) return closeWorkspace();
       contents = refreshed;
-      if (!["child-name", "child-birthday", "child-parents", "record-id", "child-sex", "child-barangay", "child-purok", ...(timbang ? measurementFields.map((field) => `child-${field}`) : [])].some((id) => $(id).value)) renderLookups();
+      if (!["child-name", "child-middle-initial", "child-surname", "child-birthday", "child-parents", "record-id", "child-sex", "child-barangay", "child-purok", ...(timbang ? measurementFields.map((field) => `child-${field}`) : [])].some((id) => $(id).value)) renderLookups();
       renderRecords();
       if (contents.conflicts.length) setNotice($("workspace-message"), "Some records changed online. Review the versions below before syncing those changes.", "error");
       else setNotice($("workspace-message"), "");
       setConnection();
-      const editing = ["child-name", "child-birthday", "child-parents", "record-id", "child-sex", "child-barangay", "child-purok", ...(timbang ? measurementFields.map((field) => `child-${field}`) : [])].some((id) => $(id).value);
+      const editing = ["child-name", "child-middle-initial", "child-surname", "child-birthday", "child-parents", "record-id", "child-sex", "child-barangay", "child-purok", ...(timbang ? measurementFields.map((field) => `child-${field}`) : [])].some((id) => $(id).value);
       if (!contents.pending.length && !contents.draft && !editing && !document.querySelector("dialog[open]")) {
         // Verify that the full page is available before leaving the working cache.
         const onlinePage = await fetch(onlinePath, { cache: "no-store", signal: AbortSignal.timeout(10000) });
-        const stillEditing = ["child-name", "child-birthday", "child-parents", "record-id", "child-sex", "child-barangay", "child-purok", ...(timbang ? measurementFields.map((field) => `child-${field}`) : [])].some((id) => $(id).value);
+        const stillEditing = ["child-name", "child-middle-initial", "child-surname", "child-birthday", "child-parents", "record-id", "child-sex", "child-barangay", "child-purok", ...(timbang ? measurementFields.map((field) => `child-${field}`) : [])].some((id) => $(id).value);
         if (onlinePage.ok && !stillEditing && !document.querySelector("dialog[open]")) {
           const params = new URLSearchParams();
           if ($("record-search").value) params.set("q", $("record-search").value);
@@ -477,7 +488,7 @@ import { mountOfflineWorkspace } from "/offline-workspace.js";
       openEditor(null, false);
       if (contents.draft) {
         const { id, child, updatedAt } = contents.draft;
-        openEditor({ id, updated_at: updatedAt, name: child.name, birthday: child.birthday, sex: child.sex, parents: child.parents, barangay_id: child.barangayId, purok_id: child.purokId, ...(timbang ? { weight: child.weight, height: child.height, muac: child.muac } : {}) });
+        openEditor({ id, updated_at: updatedAt, name: child.name, surname: child.surname, first_name: child.firstName, middle_initial: child.middleInitial, birthday: child.birthday, sex: child.sex, parents: child.parents, barangay_id: child.barangayId, purok_id: child.purokId, ...(timbang ? { weight: child.weight, height: child.height, muac: child.muac } : {}) });
         $("editor-title").textContent = id ? "Edit child record" : "Add a child";
         setNotice($("workspace-message"), "Your unfinished form was kept when the connection changed. Continue filling it in, then save.");
       } else if (route.recordId) {
@@ -487,6 +498,8 @@ import { mountOfflineWorkspace } from "/offline-workspace.js";
       }
       if (navigator.onLine) void syncChanges();
     } catch (error) {
+      $("access-loading").hidden = true;
+      $("access-content").hidden = false;
       setNotice($("access-message"), error instanceof Error ? error.message : "Offline storage is unavailable in this browser.", "error");
     }
   }
@@ -507,6 +520,8 @@ import { mountOfflineWorkspace } from "/offline-workspace.js";
   function closeWorkspace() {
     contents = null;
     $("workspace").hidden = true;
+    $("access-loading").hidden = true;
+    $("access-content").hidden = false;
     $("access-panel").hidden = false;
     $("record-list").replaceChildren();
     $("conflicts").replaceChildren();
@@ -519,7 +534,7 @@ import { mountOfflineWorkspace } from "/offline-workspace.js";
     if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
     if (!(anchor instanceof HTMLAnchorElement) || anchor.origin !== location.origin || !workerRoute(new URL(anchor.href)) || anchor.hash) return;
-    const draft = { id: $("record-id").value, updatedAt: $("record-version").value, child: { name: $("child-name").value, birthday: $("child-birthday").value, sex: $("child-sex").value, parents: $("child-parents").value, barangayId: $("child-barangay").value, purokId: $("child-purok").value, ...(timbang ? Object.fromEntries(measurementFields.map((field) => [field, $(`child-${field}`).value])) : {}) } };
+    const draft = { id: $("record-id").value, updatedAt: $("record-version").value, child: { name: [$("child-name").value, $("child-middle-initial").value, $("child-surname").value].filter(Boolean).join(" ").trim(), firstName: $("child-name").value, middleInitial: $("child-middle-initial").value, surname: $("child-surname").value, birthday: $("child-birthday").value, sex: $("child-sex").value, parents: $("child-parents").value, barangayId: $("child-barangay").value, purokId: $("child-purok").value, ...(timbang ? Object.fromEntries(measurementFields.map((field) => [field, $(`child-${field}`).value])) : {}) } };
     if (!Object.values(draft.child).some(Boolean)) return;
     event.preventDefault();
     try { await changeWorkerContents((state) => { state.draft = draft; }); location.assign(anchor.href); }
@@ -541,14 +556,14 @@ import { mountOfflineWorkspace } from "/offline-workspace.js";
   $("account-close").addEventListener("click", () => $("account-dialog").close());
   $("account-button").addEventListener("click", () => $("account-dialog").showModal());
   $("export-button").addEventListener("click", () => {
-    if (["child-name", "child-birthday", "child-parents", "record-id"].some((id) => $(id).value)) return showFeedback("Save or cancel your current record before returning to the online registry for Excel export.");
+    if (["child-name", "child-middle-initial", "child-surname", "child-birthday", "child-parents", "record-id"].some((id) => $(id).value)) return showFeedback("Save or cancel your current record before returning to the online registry for Excel export.");
     if (navigator.onLine) window.location.assign(new URL(onlinePath, window.location.origin).href);
   });
   $("new-record-button").addEventListener("click", () => {
     const open = $("registry-grid").classList.toggle("show-new-record");
     $("new-record-button").setAttribute("aria-expanded", String(open));
     $("new-record-button").textContent = open ? "Close new record" : "+ Add child";
-    if (open) $("child-name").focus();
+    if (open) $("child-surname").focus();
   });
   $("cancel-edit-button").addEventListener("click", () => { openEditor(null, false); $("registry-grid").classList.remove("show-new-record"); $("new-record-button").setAttribute("aria-expanded", "false"); });
   $("sync-button").addEventListener("click", () => void syncChanges());

@@ -10,6 +10,10 @@ export type OfflineSnapshot = {
 
 export type OfflineChildInput = {
   name: string;
+  givenName?: string;
+  firstName?: string;
+  middleInitial?: string;
+  surname?: string;
   birthday: string;
   sex: "F" | "M";
   parents: string;

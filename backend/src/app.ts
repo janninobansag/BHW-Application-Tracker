@@ -12,7 +12,7 @@ type UserPublic = Omit<User, "password_hash">;
 type Barangay = { id: string; name: string; created_at?: string };
 type Sitio = { id: string; name: string; barangay_id: string; created_at?: string };
 type Purok = { id: string; name: string; barangay_id: string; created_at?: string };
-type Child = { id: string; name: string; birthday: string; sex: "F" | "M"; parents: string; barangay_id: string; purok_id: string; created_by: string; created_at: string; updated_at: string } & Partial<Measurements>;
+type Child = { id: string; name: string; surname?: string; first_name?: string; middle_initial?: string; birthday: string; sex: "F" | "M"; parents: string; barangay_id: string; purok_id: string; created_by: string; created_at: string; updated_at: string } & Partial<Measurements>;
 const recordCollection = (req: Request) => req.path.startsWith("/api/operation-timbang") ? "operation_timbang" : "children";
 const now = () => new Date().toISOString();
 const publicUser = (user: User): UserPublic => {
@@ -392,16 +392,24 @@ router.post(["/api/children", "/api/operation-timbang"], async (req, res, next) 
   try {
     const user = res.locals.user as User;
     if (req.body.offlineUserId && (req.body.offlineUserId !== user.id || user.role !== "bhw")) return message(res, 403, "Sign in to the worker account that saved these offline changes.");
-    const { id, name, birthday, sex, parents, barangayId, purokId, expectedUpdatedAt, updatedAt } = req.body;
+    const { id, name, givenName, firstName, middleInitial, surname, birthday, sex, parents, barangayId, purokId, expectedUpdatedAt, updatedAt } = req.body;
+    const newName = Object.prototype.hasOwnProperty.call(req.body, "firstName") || Object.prototype.hasOwnProperty.call(req.body, "middleInitial");
+    const separateName = newName || Object.prototype.hasOwnProperty.call(req.body, "givenName") || Object.prototype.hasOwnProperty.call(req.body, "surname");
+    const cleanGivenName = typeof givenName === "string" ? givenName.trim().replace(/\s+/gu, " ") : "";
+    const cleanFirstName = typeof firstName === "string" ? firstName.trim().replace(/\s+/gu, " ") : "";
+    const inputInitial = typeof middleInitial === "string" ? middleInitial.trim() : "";
+    const cleanInitial = inputInitial ? `${[...inputInitial][0].toLocaleUpperCase("en-PH")}.` : "";
+    const cleanSurname = typeof surname === "string" ? surname.trim().replace(/\s+/gu, " ") : "";
+    const fullName = newName ? [cleanFirstName, cleanInitial, cleanSurname].filter(Boolean).join(" ") : separateName ? `${cleanGivenName} ${cleanSurname}`.trim() : name;
     const hasOfflineVersion = Object.prototype.hasOwnProperty.call(req.body, "expectedUpdatedAt");
     const expectedVersion = hasOfflineVersion ? expectedUpdatedAt : updatedAt;
     const hasExpectedVersion = hasOfflineVersion || (typeof updatedAt === "string" && updatedAt.length > 0);
     const measurements = recordCollection(req) === "operation_timbang" ? parseMeasurements(req.body) : {};
     if (!measurements) return message(res, 400, "Enter weight, height, and MUAC as positive numbers up to 1000 with at most two decimal places, or leave them blank.");
-    if (!validName(name, 120) || !validName(parents, 240) || !validBirthday(birthday) || !["F", "M"].includes(sex) || !(await canAccessBarangay(user, barangayId)) || !(await canAccessPurok(user, purokId, barangayId))) return message(res, 400, "Check the child details and assigned barangay/Purok.");
+    if ((newName && (!validName(cleanFirstName, 100) || (inputInitial && !/^\p{L}\.?$/u.test(inputInitial)))) || (separateName && (!validName(cleanSurname, 100) || (!newName && !validName(cleanGivenName, 100)))) || !validName(fullName, 120) || !validName(parents, 240) || !validBirthday(birthday) || !["F", "M"].includes(sex) || !(await canAccessBarangay(user, barangayId)) || !(await canAccessPurok(user, purokId, barangayId))) return message(res, 400, "Check the child details and assigned barangay/Purok.");
     const db = await getDb();
     const stamp = now();
-    const child: Child = { id: id || randomUUID(), name: name.trim(), birthday, sex, parents: parents.trim(), barangay_id: barangayId, purok_id: purokId, created_by: user.id, created_at: stamp, updated_at: stamp, ...measurements };
+    const child: Child = { id: id || randomUUID(), name: fullName.trim(), ...(separateName ? { surname: cleanSurname } : {}), ...(newName ? { first_name: cleanFirstName, middle_initial: cleanInitial } : {}), birthday, sex, parents: parents.trim(), barangay_id: barangayId, purok_id: purokId, created_by: user.id, created_at: stamp, updated_at: stamp, ...measurements };
     if (id) {
       const existing = await db.collection<Child>(recordCollection(req)).findOne({ id });
       if (!existing) {
@@ -412,7 +420,7 @@ router.post(["/api/children", "/api/operation-timbang"], async (req, res, next) 
       }
       if (!(await canAccessPurok(user, existing.purok_id, existing.barangay_id))) return message(res, 404, "Record unavailable.");
       if (hasOfflineVersion && expectedUpdatedAt === null) {
-        const sameOfflineCreate = existing.created_by === user.id && existing.name === child.name && existing.birthday === child.birthday && existing.sex === child.sex && existing.parents === child.parents && existing.barangay_id === child.barangay_id && existing.purok_id === child.purok_id && (recordCollection(req) !== "operation_timbang" || ["weight", "height", "muac"].every((key) => existing[key as keyof Measurements] === child[key as keyof Measurements]));
+        const sameOfflineCreate = existing.created_by === user.id && existing.name === child.name && existing.surname === child.surname && existing.first_name === child.first_name && existing.middle_initial === child.middle_initial && existing.birthday === child.birthday && existing.sex === child.sex && existing.parents === child.parents && existing.barangay_id === child.barangay_id && existing.purok_id === child.purok_id && (recordCollection(req) !== "operation_timbang" || ["weight", "height", "muac"].every((key) => existing[key as keyof Measurements] === child[key as keyof Measurements]));
         return sameOfflineCreate ? res.json({ message: "Child record was already synced.", child: existing }) : message(res, 409, "A record with this offline ID already exists with different details.");
       }
       if (hasExpectedVersion && (typeof expectedVersion !== "string" || existing.updated_at !== expectedVersion)) return message(res, 409, hasOfflineVersion ? "This record changed online after your offline copy was saved." : "This record changed after you opened it. Reload the record before saving again.");

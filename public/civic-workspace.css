@@ -247,6 +247,10 @@ input::placeholder { color: #697c71; opacity: 1; }
 .new-record-dialog > .panel { border: 0; box-shadow: none; padding: 0; }
 .new-record-dialog > .panel > :is(.eyebrow, h2, .muted) { display: none; }
 .new-record-dialog .form-stack { display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: 20px; margin: 0; }
+.child-name-fields { display: grid; grid-column: 1 / -1; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.4fr) minmax(80px, .55fr); align-items: start; gap: 16px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.child-name-fields > legend { padding: 0 0 12px; color: #355148; font-size: .8rem; font-weight: 650; }
+.child-name-fields .field { min-width: 0; align-self: start; }
+.child-name-fields .field-optional { font-weight: 400; }
 .new-record-dialog .form-stack > .field:first-child, .new-record-dialog .form-stack > .field:nth-child(4), .new-record-dialog .location-fieldset, .new-record-dialog .form-stack > button { grid-column: 1/-1; }
 .new-record-dialog .location-fieldset { grid-template-columns: 1fr 1fr; }
 .new-record-dialog .location-fieldset > p { grid-column: 1/-1; }
@@ -439,6 +443,7 @@ input::placeholder { color: #697c71; opacity: 1; }
   .export-age-option { padding: 12px; }
   .export-age-option label { min-height: 48px; font-size: .8rem; }
   .new-record-dialog .form-stack, .new-record-dialog .location-fieldset { grid-template-columns: 1fr; gap: 20px; }
+  .child-name-fields { grid-template-columns: 1fr; gap: 16px; }
   .new-record-dialog .form-stack input, .new-record-dialog .form-stack select { min-height: 48px; font-size: 16px; }
   .record-edit-form-panel, .record-summary { padding: 22px 18px; }
   .record-edit-form-heading h2 { font-size: 1.1rem; }
