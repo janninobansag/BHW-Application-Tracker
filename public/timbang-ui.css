@@ -9,6 +9,7 @@
 .timbang-measurement-label, .timbang-unit, .timbang-sex-label, .timbang-age-label { display: none; }
 .timbang-unmeasured { color: var(--civic-muted); }
 .timbang-child-fields { display: grid; grid-column: 1 / -1; grid-template-columns: 1fr 1fr; gap: 20px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.timbang-child-fields > .child-name-fields { grid-column: 1 / -1; }
 .timbang-child-fields > legend { margin: 0; padding: 0 0 16px; color: var(--civic-ink); font-size: .9rem; font-weight: 650; }
 .timbang-child-fields > .field:first-of-type, .timbang-child-fields > .field:last-child { grid-column: 1 / -1; }
 .timbang-measurements { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }

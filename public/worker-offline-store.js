@@ -144,7 +144,7 @@ export async function queueWorkerDelete(id, expectedUpdatedAt, program = "deworm
     const original = contents.snapshot.children.find((item) => item.id === id);
     const queued = contents.pending.find((item) => item.id === id);
     if (!original && !queued) throw new Error("This record is no longer available on this device.");
-    const details = queued?.child || { name: original.name, birthday: original.birthday, sex: original.sex, parents: original.parents, barangayId: original.barangay_id, purokId: original.purok_id, ...(program === "timbang" ? { weight: original.weight, height: original.height, muac: original.muac } : {}) };
+    const details = queued?.child || { name: original.name, ...(original.surname ? { surname: original.surname } : {}), birthday: original.birthday, sex: original.sex, parents: original.parents, barangayId: original.barangay_id, purokId: original.purok_id, ...(program === "timbang" ? { weight: original.weight, height: original.height, muac: original.muac } : {}) };
     contents.pending = contents.pending.filter((item) => item.id !== id);
     // A queued create may already have reached the server before its response was lost.
     // Always keep a delete operation so a later sync can safely remove that same ID.

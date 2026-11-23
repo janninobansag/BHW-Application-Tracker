@@ -70,7 +70,7 @@ export function validateJsonRequest(req: Request, res: Response, next: NextFunct
     const value = req.body[key];
     if (value !== undefined && !(Array.isArray(value) ? value.every(validId) : value === "" || validId(value))) return deny(res, 400, "Invalid assignment IDs.");
   }
-  for (const key of ["username", "password", "current", "next", "confirm", "temporaryPassword", "setupToken", "name", "parents", "displayName"]) {
+  for (const key of ["username", "password", "current", "next", "confirm", "temporaryPassword", "setupToken", "name", "givenName", "firstName", "middleInitial", "surname", "parents", "displayName"]) {
     if (req.body[key] !== undefined && typeof req.body[key] !== "string") return deny(res, 400, "Invalid text field.");
   }
   if (req.body.active !== undefined && typeof req.body.active !== "boolean") return deny(res, 400, "Invalid account state.");
