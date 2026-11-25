@@ -35,6 +35,8 @@ export type TimbangRecord = Child & {
   muac: number | null;
 };
 
+export type { HouseholdInput, HouseholdMember, HouseholdProfile } from "../backend/src/household-profile";
+
 export type ManagedUser = AppUser & { assigned_ids: string | null; assigned_purok_ids: string | null };
 
 export type WorkerRecords = {

@@ -1,11 +1,13 @@
 import { workerRoute } from "/offline-routing.js";
-const CACHE_NAME = "bhw-pwa-shell-v25";
+const CACHE_NAME = "bhw-pwa-shell-v28";
 const APP_SHELL = [
   "/offline.html",
   "/offline.js",
   "/worker-offline-store.js",
   "/offline-routing.js",
   "/offline-workspace.js",
+  "/offline-households.js",
+  "/household-options.js",
   "/child-name.js",
   "/dashboard-ui.css",
   "/page-skeleton.css",
@@ -13,6 +15,7 @@ const APP_SHELL = [
   "/civic-workspace.css",
   "/offline-ui.css",
   "/timbang-ui.css",
+  "/household-ui.css",
   "/online-required.html",
   "/manifest.webmanifest",
   "/favicon-bhw.png",

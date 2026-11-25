@@ -4,8 +4,10 @@ import { getDb } from "./db.js";
 import { cleanUsername, cookieValue, createSessionToken, equalSecret, hashPassword, hashSessionToken, sessionCookieName, validPassword, verifyPassword } from "./security.js";
 import { makeWorkbook } from "./workbook.js";
 import { makePrintReport } from "./print-report.js";
-import { authRateLimit, browserRequestSecurity, responseSecurity, validateJsonRequest } from "./request-security.js";
+import { authRateLimit, browserRequestSecurity, responseSecurity, validId, validateJsonRequest } from "./request-security.js";
 import { parseMeasurements, type Measurements } from "./timbang.js";
+import { parseHouseholdProfile, type HouseholdProfile } from "./household-profile.js";
+import { makeHouseholdProfilePdf } from "./household-print.js";
 
 type User = { id: string; username: string; display_name: string; role: "admin" | "bhw"; password_hash?: string | null; is_active: number; must_change_password: number; created_at?: string; updated_at?: string };
 type UserPublic = Omit<User, "password_hash">;
@@ -329,6 +331,99 @@ router.get(["/api/children", "/api/operation-timbang"], async (req, res, next) =
   } catch (error) { return next(error); }
 });
 
+router.get("/api/households", async (_req, res, next) => {
+  try {
+    const user = res.locals.user as User;
+    const db = await getDb();
+    const query = user.role === "admin" ? {} : { purokId: { $in: await assignedPurokIds(user) } };
+    const profiles = await db.collection<HouseholdProfile>("household_profiles").find(query).sort({ updated_at: -1 }).toArray();
+    const [barangays, puroks, sitios, workers] = await Promise.all([
+      db.collection<Barangay>("barangays").find({ id: { $in: [...new Set(profiles.map((item) => item.barangayId))] } }).toArray(),
+      db.collection<Purok>("puroks").find({ id: { $in: [...new Set(profiles.map((item) => item.purokId))] } }).toArray(),
+      db.collection<Sitio>("sitios").find({ id: { $in: [...new Set(profiles.map((item) => item.sitioId).filter(Boolean))] } }).toArray(),
+      db.collection<User>("users").find({ id: { $in: [...new Set(profiles.map((item) => item.created_by))] } }).toArray(),
+    ]);
+    const names = (items: Array<{ id: string; name: string }>) => new Map(items.map((item) => [item.id, item.name]));
+    const barangayNames = names(barangays), purokNames = names(puroks), sitioNames = names(sitios);
+    const workerNames = new Map(workers.map((item) => [item.id, item.display_name]));
+    return res.json({ households: profiles.map((profile) => ({ ...profile, barangay_name: barangayNames.get(profile.barangayId) ?? "", purok_name: purokNames.get(profile.purokId) ?? "", sitio_name: sitioNames.get(profile.sitioId) ?? "", worker_name: workerNames.get(profile.created_by) ?? "" })) });
+  } catch (error) { return next(error); }
+});
+
+router.get("/api/households/:id", async (req, res, next) => {
+  try {
+    const user = res.locals.user as User;
+    const household = await (await getDb()).collection<HouseholdProfile>("household_profiles").findOne({ id: req.params.id });
+    if (!household || !(await canAccessPurok(user, household.purokId, household.barangayId))) return message(res, 404, "Household unavailable.");
+    return res.json({ household });
+  } catch (error) { return next(error); }
+});
+
+router.get("/api/households/:id/pdf", async (req, res, next) => {
+  try {
+    const user = res.locals.user as User;
+    const db = await getDb();
+    const profile = await db.collection<HouseholdProfile>("household_profiles").findOne({ id: req.params.id });
+    if (!profile || !(await canAccessPurok(user, profile.purokId, profile.barangayId))) return message(res, 404, "Household unavailable.");
+    const [barangay, purok, sitio] = await Promise.all([
+      db.collection<Barangay>("barangays").findOne({ id: profile.barangayId }),
+      db.collection<Purok>("puroks").findOne({ id: profile.purokId }),
+      profile.sitioId ? db.collection<Sitio>("sitios").findOne({ id: profile.sitioId }) : null,
+    ]);
+    const file = Buffer.from(await makeHouseholdProfilePdf({ ...profile, barangay_name: barangay?.name ?? "", purok_name: purok?.name ?? "", sitio_name: sitio?.name ?? "" }));
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="household-profile-${profile.id}.pdf"`);
+    res.setHeader("Content-Length", String(file.length));
+    return res.end(file);
+  } catch (error) { return next(error); }
+});
+
+router.post("/api/households", async (req, res, next) => {
+  try {
+    const user = res.locals.user as User;
+    if (req.body.offlineUserId && (user.role !== "bhw" || req.body.offlineUserId !== user.id)) return message(res, 403, "Sign in to the worker account that saved this household.");
+    const input = parseHouseholdProfile(req.body);
+    if (!input) return message(res, 400, "Check the household details and member fields.");
+    if (!(await canAccessPurok(user, input.purokId, input.barangayId))) return message(res, 403, "This Purok is not assigned to your account.");
+    const db = await getDb();
+    if (input.sitioId && !(await db.collection<Sitio>("sitios").findOne({ id: input.sitioId, barangay_id: input.barangayId }))) return message(res, 400, "Choose a Sitio in the selected barangay.");
+    const id = req.body.id || randomUUID();
+    if (!validId(id)) return message(res, 400, "Invalid household ID.");
+    const current = await db.collection<HouseholdProfile>("household_profiles").findOne({ id });
+    const expected = req.body.expectedUpdatedAt;
+    if (current) {
+      if (!(await canAccessPurok(user, current.purokId, current.barangayId))) return message(res, 404, "Household unavailable.");
+      if (typeof expected !== "string" || current.updated_at !== expected) {
+        if (expected === null && current.created_by === user.id && JSON.stringify(parseHouseholdProfile(current)) === JSON.stringify(input)) return res.json({ message: "Household already synced.", household: current });
+        return message(res, 409, "This household changed online. Reload it before saving.");
+      }
+      const updated: HouseholdProfile = { ...input, id, created_by: current.created_by, created_at: current.created_at, updated_at: now() };
+      const result = await db.collection<HouseholdProfile>("household_profiles").replaceOne({ id, updated_at: expected }, updated);
+      if (!result.matchedCount) return message(res, 409, "This household changed online. Reload it before saving.");
+      return res.json({ message: "Household updated.", household: updated });
+    }
+    if (expected !== undefined && expected !== null) return message(res, 409, "This household no longer exists online.");
+    const created: HouseholdProfile = { ...input, id, created_by: user.id, created_at: now(), updated_at: now() };
+    await db.collection<HouseholdProfile>("household_profiles").insertOne(created);
+    return res.json({ message: "Household added.", household: created });
+  } catch (error) { return next(error); }
+});
+
+router.delete("/api/households/:id", async (req, res, next) => {
+  try {
+    const user = res.locals.user as User;
+    const db = await getDb();
+    const current = await db.collection<HouseholdProfile>("household_profiles").findOne({ id: req.params.id });
+    if (!current) return req.body.offlineUserId === user.id && user.role === "bhw" ? res.json({ message: "Household already deleted." }) : message(res, 404, "Household unavailable.");
+    if (!(await canAccessPurok(user, current.purokId, current.barangayId))) return message(res, 404, "Household unavailable.");
+    if (req.body.offlineUserId && (user.role !== "bhw" || req.body.offlineUserId !== user.id)) return message(res, 403, "Sign in to the worker account that saved this household.");
+    if (req.body.expectedUpdatedAt !== current.updated_at && !(req.body.offlineUserId === user.id && req.body.expectedUpdatedAt === null && current.created_by === user.id && JSON.stringify(parseHouseholdProfile(current)) === JSON.stringify(parseHouseholdProfile(req.body.offlineCreatedHousehold)))) return message(res, 409, "This household changed online. Reload it before deleting.");
+    const result = await db.collection<HouseholdProfile>("household_profiles").deleteOne({ id: current.id, updated_at: current.updated_at });
+    if (!result.deletedCount) return message(res, 409, "This household changed online. Reload it before deleting.");
+    return res.json({ message: "Household deleted." });
+  } catch (error) { return next(error); }
+});
+
 router.get("/api/admin/users", requireAdmin, async (_req, res, next) => {
   try {
     const db = await getDb();
@@ -493,19 +588,21 @@ router.delete("/api/admin/barangays/:id", requireAdmin, async (req, res, next) =
     const db = await getDb();
     const barangay = await db.collection<Barangay>("barangays").findOne({ id: barangayId });
     if (!barangay) return message(res, 404, "Barangay unavailable.");
-    const [puroks, sitios, children, assignedWorkers, timbangRecords] = await Promise.all([
+    const [puroks, sitios, children, assignedWorkers, timbangRecords, households] = await Promise.all([
       db.collection<Purok>("puroks").countDocuments({ barangay_id: barangayId }),
       db.collection<Sitio>("sitios").countDocuments({ barangay_id: barangayId }),
       db.collection<Child>("children").countDocuments({ barangay_id: barangayId }),
       db.collection("assignments").countDocuments({ barangay_id: barangayId }),
       db.collection<Child>("operation_timbang").countDocuments({ barangay_id: barangayId }),
+      db.collection("household_profiles").countDocuments({ barangayId }),
     ]);
-    if (puroks || children || assignedWorkers || timbangRecords) {
+    if (puroks || children || assignedWorkers || timbangRecords || households) {
       const reasons = [
         puroks && `${puroks} Purok${puroks === 1 ? "" : "s"}`,
         sitios && `${sitios} Sitio${sitios === 1 ? "" : "s"}`,
         children && `${children} child record${children === 1 ? "" : "s"}`,
         timbangRecords && `${timbangRecords} Operation Timbang record${timbangRecords === 1 ? "" : "s"}`,
+        households && `${households} household profile${households === 1 ? "" : "s"}`,
         assignedWorkers && `${assignedWorkers} BHW assignment${assignedWorkers === 1 ? "" : "s"}`,
       ].filter(Boolean);
       return message(res, 409, `Cannot delete ${barangay.name} while it has ${reasons.join(", ")}. Remove or reassign them first.`);
@@ -559,6 +656,7 @@ router.delete("/api/admin/sitios/:id", requireAdmin, async (req, res, next) => {
     const db = await getDb();
     const sitio = await db.collection<Sitio>("sitios").findOne({ id: req.params.id });
     if (!sitio) return message(res, 404, "Sitio unavailable.");
+    if (await db.collection("household_profiles").countDocuments({ sitioId: sitio.id })) return message(res, 409, "This Sitio is used by household profiles. Reassign those households first.");
     await db.collection<Sitio>("sitios").deleteOne({ id: sitio.id });
     return res.json({ message: `Sitio ${sitio.name} deleted.` });
   } catch (error) { return next(error); }
@@ -582,15 +680,17 @@ router.delete("/api/admin/puroks/:id", requireAdmin, async (req, res, next) => {
     const db = await getDb();
     const purok = await db.collection<Purok>("puroks").findOne({ id: req.params.id });
     if (!purok) return message(res, 404, "Purok unavailable.");
-    const [children, assignedWorkers, timbangRecords] = await Promise.all([
+    const [children, assignedWorkers, timbangRecords, households] = await Promise.all([
       db.collection<Child>("children").countDocuments({ purok_id: purok.id }),
       db.collection("purok_assignments").countDocuments({ purok_id: purok.id }),
       db.collection<Child>("operation_timbang").countDocuments({ purok_id: purok.id }),
+      db.collection("household_profiles").countDocuments({ purokId: purok.id }),
     ]);
-    if (children || assignedWorkers || timbangRecords) {
+    if (children || assignedWorkers || timbangRecords || households) {
       const reasons = [
         children && `${children} child record${children === 1 ? "" : "s"}`,
         timbangRecords && `${timbangRecords} Operation Timbang record${timbangRecords === 1 ? "" : "s"}`,
+        households && `${households} household profile${households === 1 ? "" : "s"}`,
         assignedWorkers && `${assignedWorkers} BHW assignment${assignedWorkers === 1 ? "" : "s"}`,
       ].filter(Boolean);
       return message(res, 409, `Cannot delete Purok ${purok.name} while it has ${reasons.join(" and ")}. Reassign or remove them first.`);
