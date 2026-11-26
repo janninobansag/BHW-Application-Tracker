@@ -6,7 +6,7 @@ import { makeWorkbook } from "./workbook.js";
 import { makePrintReport } from "./print-report.js";
 import { authRateLimit, browserRequestSecurity, responseSecurity, validId, validateJsonRequest } from "./request-security.js";
 import { parseMeasurements, type Measurements } from "./timbang.js";
-import { parseHouseholdProfile, type HouseholdProfile } from "./household-profile.js";
+import { firstHouseholdValidationIssue, parseHouseholdProfile, type HouseholdProfile } from "./household-profile.js";
 import { makeHouseholdProfilePdf } from "./household-print.js";
 
 type User = { id: string; username: string; display_name: string; role: "admin" | "bhw"; password_hash?: string | null; is_active: number; must_change_password: number; created_at?: string; updated_at?: string };
@@ -383,7 +383,7 @@ router.post("/api/households", async (req, res, next) => {
     const user = res.locals.user as User;
     if (req.body.offlineUserId && (user.role !== "bhw" || req.body.offlineUserId !== user.id)) return message(res, 403, "Sign in to the worker account that saved this household.");
     const input = parseHouseholdProfile(req.body);
-    if (!input) return message(res, 400, "Check the household details and member fields.");
+    if (!input) return res.status(400).json({ message: "Check the highlighted household field.", issue: firstHouseholdValidationIssue(req.body) });
     if (!(await canAccessPurok(user, input.purokId, input.barangayId))) return message(res, 403, "This Purok is not assigned to your account.");
     const db = await getDb();
     if (input.sitioId && !(await db.collection<Sitio>("sitios").findOne({ id: input.sitioId, barangay_id: input.barangayId }))) return message(res, 400, "Choose a Sitio in the selected barangay.");

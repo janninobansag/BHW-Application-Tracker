@@ -5,6 +5,8 @@ import { workerRoute, workerOfflineUrl } from "../public/offline-routing.js";
 test("worker pages retain their destination and registry when switching offline", () => {
   assert.equal(workerRoute("/dashboard").view, "dashboard");
   assert.equal(workerRoute("/worker-portfolio").view, "portfolio");
+  assert.equal(workerRoute("/worker-portfolio/summary").view, "portfolio-summary");
+  assert.equal(workerOfflineUrl("/worker-portfolio/summary"), "/offline.html?view=portfolio-summary");
   assert.equal(workerRoute("/worker-portfolio/new").recordId, "new");
   assert.equal(workerRoute("/worker-portfolio/house-1").recordId, "house-1");
   assert.equal(workerOfflineUrl("/worker-portfolio/house-1"), "/offline.html?view=portfolio&record=house-1");
