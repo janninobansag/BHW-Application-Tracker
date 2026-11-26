@@ -3,12 +3,13 @@ export function workerRoute(value) {
   const url = value instanceof URL ? value : new URL(value, "https://bhw.invalid");
   const path = url.pathname;
   if (path === "/dashboard") return { view: "dashboard", program: "deworming", title: "Dashboard" };
+  if (path === "/worker-portfolio/summary") return { view: "portfolio-summary", program: "deworming", title: "Household summary" };
   if (path === "/worker-portfolio" || path.startsWith("/worker-portfolio/")) return { view: "portfolio", program: "deworming", title: "Household Profiling", recordId: path.startsWith("/worker-portfolio/") ? decodeURIComponent(path.split("/").pop()) : null };
   if (path === "/notifications") return { view: "notifications", program: "deworming", title: "Notifications" };
   if (path === "/" || path.startsWith("/records/") || path === "/operation-timbang" || path.startsWith("/operation-timbang/") || path === "/offline.html") {
     const timbang = path.startsWith("/operation-timbang") || url.searchParams.get("program") === "timbang";
     const view = path === "/offline.html" ? url.searchParams.get("view") : "registry";
-    if (["dashboard", "portfolio", "notifications"].includes(view)) return { view, program: "deworming", title: { dashboard: "Dashboard", portfolio: "Household Profiling", notifications: "Notifications" }[view] };
+    if (["dashboard", "portfolio", "portfolio-summary", "notifications"].includes(view)) return { view, program: "deworming", title: { dashboard: "Dashboard", portfolio: "Household Profiling", "portfolio-summary": "Household summary", notifications: "Notifications" }[view] };
     let recordId;
     try { recordId = path.startsWith("/records/") || path.startsWith("/operation-timbang/") ? decodeURIComponent(path.split("/").pop()) : url.searchParams.get("record"); }
     catch { return null; }

@@ -6,8 +6,9 @@ import { makeWorkbook } from "./workbook.js";
 import { makePrintReport } from "./print-report.js";
 import { authRateLimit, browserRequestSecurity, responseSecurity, validId, validateJsonRequest } from "./request-security.js";
 import { parseMeasurements, type Measurements } from "./timbang.js";
-import { parseHouseholdProfile, type HouseholdProfile } from "./household-profile.js";
+import { firstHouseholdValidationIssue, parseHouseholdProfile, type HouseholdProfile } from "./household-profile.js";
 import { makeHouseholdProfilePdf } from "./household-print.js";
+import { makeHouseholdSummaryPdf, makeHouseholdSummaryWorkbook } from "./household-summary-export.js";
 
 type User = { id: string; username: string; display_name: string; role: "admin" | "bhw"; password_hash?: string | null; is_active: number; must_change_password: number; created_at?: string; updated_at?: string };
 type UserPublic = Omit<User, "password_hash">;
@@ -350,6 +351,38 @@ router.get("/api/households", async (_req, res, next) => {
   } catch (error) { return next(error); }
 });
 
+router.get("/api/households/summary/export", async (req, res, next) => {
+  try {
+    const format = req.query.format;
+    if (format !== "pdf" && format !== "xlsx") return message(res, 400, "Choose Excel or PDF format.");
+    const value = (key: string) => typeof req.query[key] === "string" ? req.query[key] as string : "";
+    const barangayId = value("barangay"), purokId = value("purok"), sitioId = value("sitio"), year = value("year"), quarter = value("quarter");
+    if ((year && !/^\d{4}$/.test(year)) || (quarter && (!year || !/^[0-3]$/.test(quarter))) || (purokId && !barangayId) || (sitioId && !barangayId)) return message(res, 400, "Choose valid summary filters.");
+    const user = res.locals.user as User;
+    const db = await getDb();
+    if (barangayId && !(await canAccessBarangay(user, barangayId))) return message(res, 403, "Barangay unavailable.");
+    if (purokId && !(await canAccessPurok(user, purokId, barangayId))) return message(res, 403, "Purok unavailable.");
+    const [barangay, purok, sitio] = await Promise.all([
+      barangayId ? db.collection<Barangay>("barangays").findOne({ id: barangayId }) : null,
+      purokId ? db.collection<Purok>("puroks").findOne({ id: purokId, barangay_id: barangayId }) : null,
+      sitioId ? db.collection<Sitio>("sitios").findOne({ id: sitioId, barangay_id: barangayId }) : null,
+    ]);
+    if (sitioId && !sitio) return message(res, 400, "Sitio unavailable.");
+    const query = user.role === "admin" ? {} : { purokId: { $in: await assignedPurokIds(user) } };
+    const profiles = await db.collection<HouseholdProfile>("household_profiles").find(query).toArray();
+    const today = todayInManila();
+    const heading = { barangay: barangay?.name ?? "All assigned barangays", purok: purok?.name ?? "All Puroks", sitio: sitio?.name ?? "All Sitios", worker: user.role === "bhw" ? user.display_name : "All workers", year: year || "All years", quarter: quarter !== "" ? ["1st", "2nd", "3rd", "4th"][Number(quarter)] : "All quarters", today };
+    const filters = { barangayId, purokId, sitioId, year, quarter };
+    const file = Buffer.from(format === "pdf" ? await makeHouseholdSummaryPdf(profiles, heading, filters) : makeHouseholdSummaryWorkbook(profiles, heading, filters));
+    res.setHeader("Content-Type", format === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="household-summary-${today}.${format}"`);
+    res.setHeader("Content-Length", String(file.length));
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    return res.end(file);
+  } catch (error) { return next(error); }
+});
+
 router.get("/api/households/:id", async (req, res, next) => {
   try {
     const user = res.locals.user as User;
@@ -383,7 +416,7 @@ router.post("/api/households", async (req, res, next) => {
     const user = res.locals.user as User;
     if (req.body.offlineUserId && (user.role !== "bhw" || req.body.offlineUserId !== user.id)) return message(res, 403, "Sign in to the worker account that saved this household.");
     const input = parseHouseholdProfile(req.body);
-    if (!input) return message(res, 400, "Check the household details and member fields.");
+    if (!input) return res.status(400).json({ message: "Check the highlighted household field.", issue: firstHouseholdValidationIssue(req.body) });
     if (!(await canAccessPurok(user, input.purokId, input.barangayId))) return message(res, 403, "This Purok is not assigned to your account.");
     const db = await getDb();
     if (input.sitioId && !(await db.collection<Sitio>("sitios").findOne({ id: input.sitioId, barangay_id: input.barangayId }))) return message(res, 400, "Choose a Sitio in the selected barangay.");

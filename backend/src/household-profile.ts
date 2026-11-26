@@ -32,6 +32,10 @@ export type HouseholdProfile = HouseholdInput & {
   barangay_name?: string; purok_name?: string; sitio_name?: string; worker_name?: string;
 };
 
+export type HouseholdValidationIssue = { path: string; message: string };
+type ReportIssue = (issue: HouseholdValidationIssue) => void;
+const invalid = (report: ReportIssue | undefined, path: string, message: string): null => { report?.({ path, message }); return null; };
+
 const text = (value: unknown, max: number): string | null => typeof value === "string" && value.trim().length <= max ? value.trim().replace(/\s+/gu, " ") : null;
 const choice = (value: unknown, choices: readonly string[]): string | null => typeof value === "string" && choices.includes(value) ? value : null;
 const object = (value: unknown): Record<string, unknown> | null => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
@@ -57,32 +61,42 @@ const memberFields = {
 const yesNo = ["", "yes", "no"] as const;
 const yesNoNa = ["", "yes", "no", "na"] as const;
 
-function parseMember(value: unknown): HouseholdMember | null {
+function parseMember(value: unknown, index: number, report?: ReportIssue): HouseholdMember | null {
   const source = object(value);
-  if (!source) return null;
+  const prefix = `members.${index}`;
+  if (!source) return invalid(report, prefix, "Enter this member's details.");
   const fields = Object.fromEntries(Object.entries(memberFields).map(([key, max]) => [key, text(source[key] ?? "", max)])) as Record<keyof typeof memberFields, string | null>;
-  if (Object.values(fields).some((entry) => entry === null) || !fields.id || !fields.surname || !fields.firstName) return null;
+  const badField = (Object.keys(fields) as (keyof typeof memberFields)[]).find((key) => fields[key] === null);
+  if (badField) return invalid(report, `${prefix}.${badField}`, "This entry is too long.");
+  for (const key of ["surname", "firstName"] as const) if (!fields[key]) return invalid(report, `${prefix}.${key}`, "This field is required.");
+  if (!fields.id) return invalid(report, prefix, "Enter this member's details.");
   const birthday = date(source.birthday);
   const sex = choice(source.sex, ["F", "M"]);
-  if (!birthday || !sex || !fields.relationship) return null;
+  if (!birthday) return invalid(report, `${prefix}.birthday`, "Enter a valid birthday.");
+  if (!sex) return invalid(report, `${prefix}.sex`, "Select a sex.");
+  if (!fields.relationship) return invalid(report, `${prefix}.relationship`, "Select a relationship to the head.");
   for (const key of ["heightCm", "weightKg"] as const) {
-    if (fields[key] && (!/^\d{1,3}(?:\.\d{1,2})?$/.test(fields[key]) || Number(fields[key]) <= 0 || Number(fields[key]) > 300)) return null;
+    if (fields[key] && (!/^\d{1,3}(?:\.\d{1,2})?$/.test(fields[key]) || Number(fields[key]) <= 0 || Number(fields[key]) > 300)) return invalid(report, `${prefix}.${key}`, "Enter a number above 0 and up to 300, with at most two decimal places.");
   }
-  if (!Array.isArray(source.classifications) || source.classifications.length !== 4) return null;
+  if (!Array.isArray(source.classifications) || source.classifications.length !== 4) return invalid(report, `${prefix}.classifications.0`, "Choose valid classifications.");
   const classifications = source.classifications.map((entry) => text(entry ?? "", 40));
-  if (classifications.some((entry) => entry === null)) return null;
+  const invalidQuarter = classifications.findIndex((entry) => entry === null);
+  if (invalidQuarter !== -1) return invalid(report, `${prefix}.classifications.${invalidQuarter}`, "Too many classifications were selected for this quarter.");
   const lastMenstrualPeriod = date(source.lastMenstrualPeriod ?? "");
   const sexuallyActive = choice(source.sexuallyActive ?? "", yesNoNa);
   const flags = ["cancer", "mentalHealth", "hypertension", "diabetes", "tbDots"] as const;
   const values = Object.fromEntries(flags.map((key) => [key, choice(source[key] ?? "", yesNoNa)])) as Record<typeof flags[number], string | null>;
-  if (lastMenstrualPeriod === null || sexuallyActive === null || Object.values(values).some((entry) => entry === null)) return null;
+  if (lastMenstrualPeriod === null) return invalid(report, `${prefix}.lastMenstrualPeriod`, "Enter a valid date.");
+  if (sexuallyActive === null) return invalid(report, `${prefix}.sexuallyActive`, "Select a valid answer.");
+  const invalidFlag = flags.find((key) => values[key] === null);
+  if (invalidFlag) return invalid(report, `${prefix}.${invalidFlag}`, "Select a valid answer.");
   return { ...fields, birthday, sex, classifications: classifications as HouseholdMember["classifications"], lastMenstrualPeriod, sexuallyActive, ...values } as HouseholdMember;
 }
 
-export function parseHouseholdProfile(value: unknown): HouseholdInput | null {
+export function parseHouseholdProfile(value: unknown, report?: ReportIssue): HouseholdInput | null {
   const source = object(value);
   const respondent = object(source?.respondent);
-  if (!source || !respondent) return null;
+  if (!source || !respondent) return invalid(report, "respondent.surname", "Enter the respondent's details.");
   const barangayId = text(source.barangayId, 160);
   const purokId = text(source.purokId, 160);
   const sitioId = text(source.sitioId ?? "", 160);
@@ -90,14 +104,31 @@ export function parseHouseholdProfile(value: unknown): HouseholdInput | null {
   const firstName = text(respondent.firstName, 100);
   const middleName = text(respondent.middleName ?? "", 100);
   const surname = text(respondent.surname, 100);
-  if (!barangayId || !purokId || sitioId === null || !householdNumber || !firstName || middleName === null || !surname) return null;
-  if (!Array.isArray(source.visits) || source.visits.length !== 4) return null;
+  if (!barangayId) return invalid(report, "barangayId", "Select a Barangay.");
+  if (!purokId) return invalid(report, "purokId", "Select a Purok.");
+  if (sitioId === null) return invalid(report, "sitioId", "Choose a valid Sitio.");
+  if (!householdNumber) return invalid(report, "householdNumber", "Enter the household number or address.");
+  if (!surname) return invalid(report, "respondent.surname", "Enter the respondent's surname.");
+  if (!firstName) return invalid(report, "respondent.firstName", "Enter the respondent's first name.");
+  if (middleName === null) return invalid(report, "respondent.middleName", "This entry is too long.");
+  if (!Array.isArray(source.visits) || source.visits.length !== 4) return invalid(report, "visits.0", "Enter a valid visit date.");
   const visits = source.visits.map((entry) => date(entry ?? ""));
-  if (visits.some((entry) => entry === null)) return null;
+  const invalidVisit = visits.findIndex((entry) => entry === null);
+  if (invalidVisit !== -1) return invalid(report, `visits.${invalidVisit}`, "Enter a valid visit date.");
   const names = ["respondentRelationship", "tribe", "headPhilhealthId", "headPhilhealthCategory", "renterMonths", "waterSourceOther", "hazardOther", "interviewedBy", "reviewedBy", "encodedBy"] as const;
   const lengths = [60, 100, 60, 60, 20, 100, 100, 120, 120, 120];
-  const strings = Object.fromEntries(names.map((key, index) => [key, text(source[key] ?? "", lengths[index])])) as Record<typeof names[number], string | null>;
-  if (Object.values(strings).some((entry) => entry === null)) return null;
+  const conditional: Record<string, unknown> = {
+    ...source,
+    tribe: source.indigenous === "ip" ? source.tribe : "",
+    headPhilhealthId: source.headPhilhealth === "yes" ? source.headPhilhealthId : "",
+    headPhilhealthCategory: source.headPhilhealth === "yes" ? source.headPhilhealthCategory : "",
+    renterMonths: source.renter === "yes" ? source.renterMonths : "",
+    waterSourceOther: source.waterSource === "other" ? source.waterSourceOther : "",
+    hazardOther: Array.isArray(source.hazards) && source.hazards.includes("other") ? source.hazardOther : "",
+  };
+  const strings = Object.fromEntries(names.map((key, index) => [key, text(conditional[key] ?? "", lengths[index])])) as Record<typeof names[number], string | null>;
+  const invalidString = names.find((key) => strings[key] === null);
+  if (invalidString) return invalid(report, invalidString, "This entry is too long.");
   const nhts = choice(source.nhts ?? "", ["", "nhts-4ps", "nhts-non4ps", "non-nhts"]);
   const indigenous = choice(source.indigenous ?? "", ["", "ip", "non-ip"]);
   const headPhilhealth = choice(source.headPhilhealth ?? "", yesNo);
@@ -108,13 +139,16 @@ export function parseHouseholdProfile(value: unknown): HouseholdInput | null {
   const wasteMethod = choice(source.wasteMethod ?? "", ["", "A", "B", "C", "D", "E"]);
   const blindDrainage = choice(source.blindDrainage ?? "", yesNo);
   const dateEncoded = date(source.dateEncoded ?? "");
-  if ([nhts, indigenous, headPhilhealth, income, renter, waterSource, toiletType, wasteMethod, blindDrainage, dateEncoded].some((entry) => entry === null)) return null;
-  if (strings.renterMonths && (!/^\d{1,3}$/.test(strings.renterMonths) || Number(strings.renterMonths) > 1200)) return null;
+  const options = { nhts, indigenous, headPhilhealth, income, renter, waterSource, toiletType, wasteMethod, blindDrainage, dateEncoded };
+  const invalidOption = (Object.keys(options) as (keyof typeof options)[]).find((key) => options[key] === null);
+  if (invalidOption) return invalid(report, invalidOption, invalidOption === "dateEncoded" ? "Enter a valid date." : "Select a valid option.");
+  if (strings.renterMonths && (!/^\d{1,3}$/.test(strings.renterMonths) || Number(strings.renterMonths) > 1200)) return invalid(report, "renterMonths", "Enter months as a whole number from 0 to 1200.");
   const allowedHazards = ["storm-surge", "flood", "landslide", "other"];
-  if (!Array.isArray(source.hazards ?? []) || (source.hazards as unknown[] | undefined ?? []).length > allowedHazards.length || (source.hazards as unknown[] | undefined ?? []).some((entry) => !allowedHazards.includes(String(entry)))) return null;
-  if (!Array.isArray(source.members) || source.members.length < 1 || source.members.length > 10) return null;
-  const members = source.members.map(parseMember);
-  if (members.some((entry) => entry === null) || new Set(members.map((entry) => entry?.id)).size !== members.length) return null;
+  if (!Array.isArray(source.hazards ?? []) || (source.hazards as unknown[] | undefined ?? []).length > allowedHazards.length || (source.hazards as unknown[] | undefined ?? []).some((entry) => !allowedHazards.includes(String(entry)))) return invalid(report, "hazards", "Choose valid hazardous area options.");
+  if (!Array.isArray(source.members) || source.members.length < 1 || source.members.length > 10) return invalid(report, "members", "Add between one and ten household members.");
+  const members = source.members.map((member, index) => parseMember(member, index, report));
+  if (members.some((entry) => entry === null)) return null;
+  if (new Set(members.map((entry) => entry?.id)).size !== members.length) return invalid(report, "members", "Each member needs a unique record.");
   return {
     barangayId, purokId, sitioId, householdNumber,
     respondent: { firstName, middleName, surname }, respondentRelationship: strings.respondentRelationship!, visits: visits as HouseholdInput["visits"],
@@ -126,4 +160,10 @@ export function parseHouseholdProfile(value: unknown): HouseholdInput | null {
     interviewedBy: strings.interviewedBy!, reviewedBy: strings.reviewedBy!, encodedBy: strings.encodedBy!,
     dateEncoded: dateEncoded!, members: members as HouseholdMember[],
   };
+}
+
+export function firstHouseholdValidationIssue(value: unknown): HouseholdValidationIssue | null {
+  let issue: HouseholdValidationIssue | null = null;
+  parseHouseholdProfile(value, (next) => { issue ??= next; });
+  return issue;
 }

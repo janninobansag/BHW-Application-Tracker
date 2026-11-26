@@ -1,5 +1,5 @@
 import { workerRoute } from "/offline-routing.js";
-const CACHE_NAME = "bhw-pwa-shell-v28";
+const CACHE_NAME = "bhw-pwa-shell-v35";
 const APP_SHELL = [
   "/offline.html",
   "/offline.js",
@@ -8,6 +8,9 @@ const APP_SHELL = [
   "/offline-workspace.js",
   "/offline-households.js",
   "/household-options.js",
+  "/height-conversion.js",
+  "/numeric-field.js",
+  "/household-summary.js",
   "/child-name.js",
   "/dashboard-ui.css",
   "/page-skeleton.css",
