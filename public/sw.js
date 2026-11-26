@@ -1,5 +1,5 @@
 import { workerRoute } from "/offline-routing.js";
-const CACHE_NAME = "bhw-pwa-shell-v34";
+const CACHE_NAME = "bhw-pwa-shell-v35";
 const APP_SHELL = [
   "/offline.html",
   "/offline.js",

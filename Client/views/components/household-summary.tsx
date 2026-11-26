@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ArrowLeft, Printer } from "lucide-react";
+import { ArrowLeft, FileDown } from "lucide-react";
 import type { Barangay, HouseholdProfile, Purok, Sitio } from "@/Data/entities";
 import { buildHouseholdSummary, summarySectionGroups } from "@/public/household-summary.js";
 
@@ -20,13 +20,22 @@ export function HouseholdSummary({ profiles, barangays, puroks, sitios, workerNa
   const summary = useMemo(() => buildHouseholdSummary(profiles, { barangayId, purokId, sitioId, year, quarter, today: todayInManila() }), [profiles, barangayId, purokId, sitioId, year, quarter]);
   const location = [barangays.find((item) => item.id === barangayId)?.name, puroks.find((item) => item.id === purokId)?.name, sitios.find((item) => item.id === sitioId)?.name].filter(Boolean).join(" / ") || "All assigned communities";
   const period = year ? `${year}${quarter ? ` · ${quarterNames[Number(quarter)]}` : " · All quarters"}` : "All recorded households";
+  const exportHref = (format: "xlsx" | "pdf") => {
+    const query = new URLSearchParams({ format });
+    if (barangayId) query.set("barangay", barangayId);
+    if (purokId) query.set("purok", purokId);
+    if (sitioId) query.set("sitio", sitioId);
+    if (year) query.set("year", year);
+    if (quarter) query.set("quarter", quarter);
+    return `/api/household-summary?${query}`;
+  };
   const renderGroup = (group: (typeof summary.sections)[number]) => <section className="household-summary-card" key={group.title} aria-label={group.title}>
     <div className="household-summary-card-heading"><h4>{group.title}</h4><span>Total {group.total}</span></div>
     <dl className="household-summary-list">{group.items.map((item) => <div className={item.value === 0 ? "household-summary-row household-summary-zero" : "household-summary-row"} key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl>
     {group.items.every((item) => item.value === 0) && <p className="household-summary-empty">No counts recorded</p>}
   </section>;
   return <section className="household-summary" aria-labelledby="household-summary-heading">
-    <div className="household-summary-toolbar"><div><p className="eyebrow">Portfolio totals</p><h2 id="household-summary-heading">Household profile summary</h2><p>Counts are calculated from the saved household profiles in your assigned communities.</p></div><div className="household-summary-actions"><Link href="/worker-portfolio" className="secondary-button"><ArrowLeft aria-hidden="true" />Profiles</Link><button type="button" className="secondary-button" onClick={() => window.print()}><Printer aria-hidden="true" />Print summary</button></div></div>
+    <div className="household-summary-toolbar"><div><p className="eyebrow">Portfolio totals</p><h2 id="household-summary-heading">Household profile summary</h2><p>Counts are calculated from the saved household profiles in your assigned communities.</p></div><div className="household-summary-actions"><Link href="/worker-portfolio" className="secondary-button"><ArrowLeft aria-hidden="true" />Profiles</Link><a href={exportHref("xlsx")} className="secondary-button"><FileDown aria-hidden="true" />Download Excel</a><a href={exportHref("pdf")} className="secondary-button"><FileDown aria-hidden="true" />Download PDF</a></div></div>
     <div className="household-summary-filters" aria-label="Summary filters">
       <div className="field"><label htmlFor="summary-barangay">Barangay</label><select id="summary-barangay" value={barangayId} onChange={(event) => { setBarangayId(event.target.value); setPurokId(""); setSitioId(""); }}><option value="">All assigned barangays</option>{barangays.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
       <div className="field"><label htmlFor="summary-purok">Purok</label><select id="summary-purok" value={purokId} disabled={!barangayId} onChange={(event) => setPurokId(event.target.value)}><option value="">All Puroks</option>{puroks.filter((item) => item.barangay_id === barangayId).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>

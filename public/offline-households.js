@@ -201,7 +201,7 @@ export function renderOfflineHouseholdSummary(root, contents) {
   const panel = node("section", "panel household-summary");
   const toolbar = node("div", "household-summary-toolbar");
   const title = node("div"); title.append(node("p", "eyebrow", "Portfolio totals"), node("h2", "", "Household profile summary"), node("p", "", "Counts include saved and pending household profiles on this device."));
-  const actions = node("div", "household-summary-actions"); actions.append(link("/worker-portfolio", "Profiles", "secondary-button"), button("Print summary", () => window.print()));
+  const actions = node("div", "household-summary-actions"); actions.append(link("/worker-portfolio", "Profiles", "secondary-button"), node("span", "", "Excel and PDF downloads are available when online."));
   toolbar.append(title, actions); panel.append(toolbar);
   const filters = node("div", "household-summary-filters"); filters.setAttribute("aria-label", "Summary filters"); panel.append(filters);
   const barangay = field(filters, "Barangay", "", () => {}, [["", "All assigned barangays"], ...snapshot.barangays.map((item) => [item.id, item.name])]);

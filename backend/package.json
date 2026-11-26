@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "node --env-file-if-exists=.env --import tsx --watch src/server.ts",
-    "test": "node --import tsx --test ci-tests/api.integration.mjs ci-tests/workbook.mjs ci-tests/security.mjs ci-tests/household-profile.mjs",
+    "test": "node --import tsx --test ci-tests/api.integration.mjs ci-tests/workbook.mjs ci-tests/security.mjs ci-tests/household-profile.mjs ci-tests/household-summary-export.mjs",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "export:d1": "node --env-file-if-exists=.env --import tsx scripts/migrate-d1-json.ts export",
