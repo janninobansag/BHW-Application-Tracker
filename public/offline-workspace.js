@@ -1,5 +1,5 @@
 import { activeWorkerId, readWorkerContents, effectiveWorkerRecords, prepareWorkerWorkspace, syncAllWorkerChanges } from "/worker-offline-store.js";
-import { renderOfflineHouseholds } from "/offline-households.js";
+import { renderOfflineHouseholds, renderOfflineHouseholdSummary } from "/offline-households.js";
 
 const $ = (id) => document.getElementById(id);
 function element(tag, className = "", text = "") {
@@ -15,7 +15,7 @@ function navigation(route) {
   nav.id = "offline-navigation"; nav.setAttribute("aria-label", "Workspace navigation"); nav.replaceChildren();
   for (const [href, label] of destinations) {
     const item = link(href, label);
-    const active = route.view === "registry" ? href === (route.program === "timbang" ? "/operation-timbang" : "/") : href === `/${route.view === "portfolio" ? "worker-portfolio" : route.view}`;
+    const active = route.view === "registry" ? href === (route.program === "timbang" ? "/operation-timbang" : "/") : href === `/${route.view.startsWith("portfolio") ? "worker-portfolio" : route.view}`;
     if (active) item.setAttribute("aria-current", "page");
     nav.append(item);
   }
@@ -114,6 +114,7 @@ export async function mountOfflineWorkspace(route) {
     if(!current&&route.view==="registry")root.append(element("p","notice","This registry has not been saved on this device yet. Connect once to download it; your other pages remain available."));
     else if(route.view==="dashboard")dashboard(root,copies);
     else if(route.view==="notifications")notifications(root,copies[0],userId);
+    else if(route.view==="portfolio-summary")renderOfflineHouseholdSummary(root,copies[2]);
     else if(route.view==="portfolio") { renderOfflineHouseholds(root,copies[2],route,()=>location.assign("/offline.html?view=portfolio")); editorRendered=Boolean(route.recordId); }
     else root.append(element("p","panel workspace-coming-soon","Coming soon"));
     const pending=copies.reduce((sum,copy)=>sum+(copy?.pending.length||0),0);

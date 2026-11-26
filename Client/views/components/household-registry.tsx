@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Plus, Search } from "lucide-react";
+import { ChartNoAxesColumn, Download, Plus, Search } from "lucide-react";
 import type { AppUser, Barangay, HouseholdProfile, Purok } from "@/Data/entities";
 import { queueWorkerHouseholdDelete, syncWorkerChanges } from "@/public/worker-offline-store.js";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/Client/shared/components/ui/alert-dialog";
@@ -63,7 +63,7 @@ export function HouseholdRegistry({ initialProfiles, barangays, puroks, user }: 
   return <section className="panel household-registry" aria-labelledby="household-registry-title">
     <div className="household-registry-header">
       <div><p className="eyebrow">Household register</p><h2 id="household-registry-title">Profiles <span className="registry-total-badge">{profiles.length}</span></h2></div>
-      <Link href="/worker-portfolio/new" className="primary-button"><Plus aria-hidden="true" />New household</Link>
+      <div className="household-registry-actions"><Link href="/worker-portfolio/summary" className="secondary-button"><ChartNoAxesColumn aria-hidden="true" />View summary</Link><Link href="/worker-portfolio/new" className="primary-button"><Plus aria-hidden="true" />New household</Link></div>
     </div>
     <div className="household-filters">
       <div className="field"><label htmlFor="household-search">Search</label><div className="household-search"><Search aria-hidden="true" /><input id="household-search" type="search" value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Household number or respondent" /></div></div>
